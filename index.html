@@ -775,7 +775,8 @@
       <div class="mblock">
         <b>2 · ¿Cuándo conviene mover el motor?</b> El servo gasta energía en cada giro. El simulador compara
         lo que <b>ganas</b> en una ventana de 15 minutos contra lo que <b>cuesta</b> ese giro: solo si la
-        ganancia supera al costo (con 25 % de margen) el panel se mueve. Si no, se queda quieto y ahorra.
+        ganancia supera al costo (con 25 % de margen) <b>y</b> el desfase pasa de 3° el panel se mueve. Si no,
+        se queda quieto y ahorra. Mientras el servo gira, todas las cifras cambian en vivo.
       </div>
       <div class="mblock">
         <b>3 · Los límites mecánicos.</b> El panel está montado sobre un eje: 90° es plano y solo puede
@@ -827,6 +828,7 @@
     playing: false,
     timer: null,
     movingUntil: 0,
+    lastDecision: 0,
     cam: { mode: 'iso', yaw: 0.46, pitch: 0.30, dist: 15.0,
            tYaw: 0.46, tPitch: 0.30, tDist: 15.0 },
     model: null
@@ -858,7 +860,8 @@
   function computeModel() {
     const astro = solarPosition(S.hour);
     const theta = astro.theta;
-    const beta = S.beta;
+    const beta = S.visualBeta;          // ángulo REAL del panel (el servo lo anima)
+    const cmdBeta = S.beta;             // ángulo mandado por el controlador
 
     // Ángulo óptimo alcanzable dentro de los topes mecánicos
     const betaOpt = clamp(theta, S.betaMin, S.betaMax);
@@ -876,7 +879,7 @@
     const P1   = -Emax * Math.sin(diffRad);                               // E'
     const P2   = -Emax * cosErr;                                          // E''
 
-    // Costo energético del giro del servo
+    // Costo energético del giro que aún falta para llegar al óptimo
     const dBeta = Math.abs(betaOpt - beta);
     const moveTime = dBeta / S.servoSpeed;
     const moveJ = dBeta > 0.5 ? (S.servoW * moveTime + S.servoJ) : 0;
@@ -886,16 +889,17 @@
     const gainW = Math.max(0, Popt - P);
     const gainMWh = gainW * (S.windowMin / 60) * 1000;
 
-    const viable = dBeta >= 2 && gainMWh > moveMWh * 1.25;
+    const viable = dBeta >= 3 && gainMWh > moveMWh * 1.25;
     const errDeg = Math.abs(beta - theta);
 
     const lampW = S.lampOn ? S.lampW : 0;
     const balance = P - lampW;
+    const moving = Math.abs(cmdBeta - beta) > 0.35;
 
     return {
-      astro, theta, beta, betaOpt, enTope, Emax, P, Popt, P1, P2,
+      astro, theta, beta, cmdBeta, betaOpt, enTope, Emax, P, Popt, P1, P2,
       dBeta, errDeg, moveJ, moveMWh, gainW, gainMWh, viable,
-      lampW, balance, moving: performance.now() < S.movingUntil
+      lampW, balance, moving
     };
   }
 
@@ -909,11 +913,11 @@
     const t = minutesLabel(S.hour);
     $('valHourBig').textContent = t;
     $('valThetaBig').textContent = fmt(m.theta, 1) + '°';
-    $('valBetaBig').textContent = fmt(S.beta, 1) + '°';
+    $('valBetaBig').textContent = fmt(m.beta, 1) + '°';
 
     // ---- Rieles ----
     const pt = clamp((S.hour - 6) / 12, 0, 1) * 100;
-    const pb = clamp((S.beta - S.betaMin) / (S.betaMax - S.betaMin), 0, 1) * 100;
+    const pb = clamp((m.beta - S.betaMin) / (S.betaMax - S.betaMin), 0, 1) * 100;
     $('timeFill').style.width = pt + '%';
     $('timeThumb').style.left = pt + '%';
     $('betaFill').style.width = pb + '%';
@@ -922,15 +926,15 @@
     $('betaTrack').setAttribute('aria-valuenow', fmt(S.beta, 1));
 
     // ---- Fórmula 1 · Energía ----
-    $('eqSub1').textContent = `E = ${fmt(m.Emax, 2)} · cos(${Math.round(S.beta)}° − ${Math.round(m.theta)}°)`;
+    $('eqSub1').textContent = `E = ${fmt(m.Emax, 2)} · cos(${Math.round(m.beta)}° − ${Math.round(m.theta)}°)`;
     $('resP').textContent = fmt(m.P, 2);
     const eff = m.Emax > 0 ? clamp((m.P / m.Emax) * 100, 0, 100) : 0;
     $('resEff').textContent = fmt(eff, 1) + '%';
     $('valPDisp').textContent = fmt(m.Emax, 2) + ' W';
-    $('explainP').innerHTML = `Máximo disponible: <b>${fmt(m.Emax, 2)} W</b>`;
+    // OJO: no reescribir #explainP con innerHTML, porque contiene a #valPDisp.
 
     // ---- Fórmula 2 · Primera derivada ----
-    $('eqSub2').textContent = `E′ = −${fmt(m.Emax, 2)} · sen(${Math.round(S.beta)}° − ${Math.round(m.theta)}°)`;
+    $('eqSub2').textContent = `E′ = −${fmt(m.Emax, 2)} · sen(${Math.round(m.beta)}° − ${Math.round(m.theta)}°)`;
     $('resP1').textContent = (m.P1 >= 0 ? '+' : '−') + fmt(Math.abs(m.P1), 2);
     const perDeg = m.P1 * (Math.PI / 180);
     $('resP1Deg').textContent = (perDeg >= 0 ? '+' : '−') + fmt(Math.abs(perDeg), 3) + ' W/°';
@@ -944,7 +948,7 @@
     }
 
     // ---- Fórmula 3 · Segunda derivada ----
-    $('eqSub3').textContent = `E″ = −${fmt(m.Emax, 2)} · cos(${Math.round(S.beta)}° − ${Math.round(m.theta)}°)`;
+    $('eqSub3').textContent = `E″ = −${fmt(m.Emax, 2)} · cos(${Math.round(m.beta)}° − ${Math.round(m.theta)}°)`;
     $('resP2').textContent = (m.P2 >= 0 ? '+' : '−') + fmt(Math.abs(m.P2), 2);
     if (m.P2 < -0.02) {
       $('resConcavity').textContent = 'Máximo ✓';
@@ -1007,40 +1011,64 @@
   }
 
   function verdictOf(m) {
+    const b = Math.round(m.beta);
+
+    // Mientras el servo gira, el estado manda sobre el veredicto
+    if (m.moving) {
+      return {
+        cls: '',
+        pill: '⚙️ Moviendo servo',
+        betaTxt: `β ${fmt(m.beta, 1)}° → ${Math.round(m.cmdBeta)}°`,
+        reason: `El servo está girando el panel de ${fmt(m.beta, 1)}° a ${Math.round(m.cmdBeta)}°. La captación sube mientras se mueve.`,
+        ncls: '',
+        narration: `⚙️ <b>Servo en marcha:</b> el panel va de <b>${fmt(m.beta, 1)}°</b> a <b>${Math.round(m.cmdBeta)}°</b> · captación <b>${fmt(m.P, 2)} W</b>.`
+      };
+    }
+
     if (m.dBeta < 1) {
       if (m.enTope) {
         return {
           cls: 'is-warn',
           pill: '🛑 Tope mecánico',
-          betaTxt: `β ${Math.round(S.beta)}° · límite`,
+          betaTxt: `β ${b}° · límite`,
           reason: `El sol va en θ = ${fmt(m.theta, 0)}°, fuera del rango del mecanismo (55°–125°). El panel ya descansa en el tope.`,
           ncls: 'is-warn',
-          narration: `🛑 <b>Tope mecánico:</b> el sol está a <b>${fmt(m.theta, 0)}°</b> pero el panel se detiene en <b>${Math.round(S.beta)}°</b>.`
+          narration: `🛑 <b>Tope mecánico:</b> el sol está a <b>${fmt(m.theta, 0)}°</b> pero el panel se detiene en <b>${b}°</b>.`
         };
       }
       return {
         cls: 'is-ok',
         pill: '✓ Panel alineado',
-        betaTxt: `β ${Math.round(S.beta)}° = θ ${fmt(m.theta, 0)}°`,
+        betaTxt: `β ${b}° = θ ${fmt(m.theta, 0)}°`,
         reason: 'El panel apunta directo al sol (E′ = 0). Mover el motor no aportaría nada: se queda en reposo.',
         ncls: 'is-ok',
-        narration: `✅ <b>Alineado:</b> sol y panel a <b>${Math.round(S.beta)}°</b>, <b>E′ = 0</b>. Máxima captación posible: <b>${fmt(m.P, 2)} W</b>.`
+        narration: `✅ <b>Alineado:</b> sol y panel a <b>${b}°</b>, <b>E′ = 0</b>. Máxima captación posible: <b>${fmt(m.P, 2)} W</b>.`
       };
     }
     if (m.viable) {
       return {
         cls: '',
         pill: '✅ Conviene mover',
-        betaTxt: `β ${Math.round(S.beta)}° → ${Math.round(m.betaOpt)}°`,
+        betaTxt: `β ${b}° → ${Math.round(m.betaOpt)}°`,
         reason: `Alinear a ${Math.round(m.betaOpt)}° cuesta ${fmt(m.moveMWh, 2)} mWh y gana +${fmt(m.gainMWh, 1)} mWh en 15 min. El servo sí conviene.`,
         ncls: '',
         narration: `🔎 El sol va <b>${fmt(m.errDeg, 0)}°</b> por delante: mover el servo a <b>${Math.round(m.betaOpt)}°</b> gana <b>+${fmt(m.gainMWh, 1)} mWh</b> y cuesta solo <b>${fmt(m.moveMWh, 2)} mWh</b>.`
       };
     }
+    if (m.dBeta < 3) {
+      return {
+        cls: 'is-ok',
+        pill: '◎ Banda muerta',
+        betaTxt: `β ${b}° · desfase ${fmt(m.dBeta, 1)}°`,
+        reason: `El desfase es de solo ${fmt(m.dBeta, 1)}° (menos de la banda muerta de 3°): el servo no se mueve para no gastar energía en microajustes.`,
+        ncls: '',
+        narration: `⏸ Desfase de <b>${fmt(m.dBeta, 1)}°</b>: está dentro de la banda muerta de <b>3°</b>, el motor no se mueve.`
+      };
+    }
     return {
       cls: 'is-warn',
       pill: '⏸ No conviene mover',
-      betaTxt: `β ${Math.round(S.beta)}° → ${Math.round(m.betaOpt)}°`,
+      betaTxt: `β ${b}° → ${Math.round(m.betaOpt)}°`,
       reason: `La ganancia en 15 min (+${fmt(m.gainMWh, 1)} mWh) no supera el costo del giro (${fmt(m.moveMWh, 2)} mWh). Mejor no gastar.`,
       ncls: 'is-warn',
       narration: `⏸ Desalineado <b>${fmt(m.errDeg, 0)}°</b>, pero mover gastaría <b>${fmt(m.moveMWh, 2)} mWh</b> y solo ganaría <b>+${fmt(m.gainMWh, 1)} mWh</b>: el panel no se mueve.`
@@ -1098,7 +1126,9 @@
   /* ============================================================
      6 · Reproducción del día
      ============================================================ */
-  const HOURS_PER_SECOND = 0.85;   // 12 h ≈ 14 s
+  const HOURS_PER_SECOND = 0.35;    // 12 h ≈ 34 s
+  const SERVO_VISUAL_DEG_S = 22;    // velocidad con la que se VE girar el panel
+  const DECISION_HOURS = 0.5;       // el controlador evalúa cada 30 min simulados
 
   function setPlaying(on) {
     S.playing = on;
@@ -1118,6 +1148,7 @@
       return;
     }
     if (S.hour >= 17.95) S.hour = 6;
+    S.lastDecision = S.hour - DECISION_HOURS;
     setPlaying(true);
     let last = performance.now();
     S.timer = setInterval(() => {
@@ -1125,26 +1156,26 @@
       const dt = Math.min(0.15, (now - last) / 1000);
       last = now;
 
-      S.hour += dt * HOURS_PER_SECOND;
-      if (S.hour >= 18) S.hour = 18;
+      S.hour = Math.min(18, S.hour + dt * HOURS_PER_SECOND);
 
-      autoDecision();
+      // El controlador solo decide cada 30 min de tiempo simulado:
+      // así el sol se adelanta, el panel se queda atrás y el balance se mueve.
+      if (S.hour - S.lastDecision >= DECISION_HOURS) {
+        S.lastDecision = S.hour;
+        autoDecision();
+      }
 
       if (S.hour >= 18) {
         clearInterval(S.timer);
         S.timer = null;
         setPlaying(false);
       }
-      refresh();
     }, 55);
   }
 
   function autoDecision() {
     const m = computeModel();
-    if (m.viable) {
-      S.beta = m.betaOpt;
-      S.movingUntil = performance.now() + 650;
-    }
+    if (m.viable) S.beta = m.betaOpt;
   }
 
   /* ============================================================
@@ -1905,10 +1936,28 @@
   /* ============================================================
      9 · Bucle de animación
      ============================================================ */
+  let lastFrame = performance.now();
+  let lastPaint = 0;
+
   function animate() {
     requestAnimationFrame(animate);
-    S.visualBeta = lerp(S.visualBeta, S.beta, 0.16);
-    if (Math.abs(S.beta - S.visualBeta) < 0.015) S.visualBeta = S.beta;
+
+    const now = performance.now();
+    const dt = Math.min(0.06, (now - lastFrame) / 1000);
+    lastFrame = now;
+
+    // Servo SG90: el panel gira a velocidad finita (no salta de golpe).
+    // Mientras gira, todas las cuentas cambian porque el modelo usa este ángulo real.
+    const diff = S.beta - S.visualBeta;
+    const stepDeg = SERVO_VISUAL_DEG_S * dt;
+    if (Math.abs(diff) <= stepDeg) S.visualBeta = S.beta;
+    else S.visualBeta += Math.sign(diff) * stepDeg;
+
+    // Repintar la interfaz ~22 veces por segundo para que las cifras sigan al servo
+    if (now - lastPaint > 45) {
+      lastPaint = now;
+      refresh();
+    }
 
     if (webglReady) {
       updateScene();
@@ -1940,7 +1989,6 @@
     $('btnAlign').addEventListener('click', () => {
       const m = computeModel();
       S.beta = clamp(m.theta, S.betaMin, S.betaMax);
-      S.movingUntil = performance.now() + 700;
       refresh();
     });
 
@@ -2084,9 +2132,10 @@
      11 · Arranque
      ============================================================ */
   function boot() {
-    // Parámetros opcionales (?h=12&b=90&yaw=0.46&pitch=0.30&dist=15) para depuración y capturas
+    // Parámetros opcionales (?h=12&b=90&yaw=0.46&pitch=0.30&dist=15&play=1) para depuración y capturas
+    let qp = null;
     try {
-      const qp = new URLSearchParams(location.search);
+      qp = new URLSearchParams(location.search);
       if (qp.has('h'))     S.hour = clamp(parseFloat(qp.get('h')), 6, 18);
       if (qp.has('b'))     S.beta = clamp(parseFloat(qp.get('b')), S.betaMin, S.betaMax);
       if (qp.has('yaw'))   S.cam.yaw = S.cam.tYaw = parseFloat(qp.get('yaw'));
@@ -2103,6 +2152,7 @@
     syncWeatherButtons();
     refresh();
     animate();
+    if (qp && qp.has('play')) setTimeout(togglePlay, 600);
   }
 
   if (document.readyState === 'loading') {
