@@ -1,0 +1,2116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SolarLab Pro · Gemelo digital 3D del seguidor solar</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     SolarLab Pro — núcleo visual
+     ============================================================ */
+  :root{
+    --bg:#04070d;
+    --glass: rgba(11,19,32,.72);
+    --glass-2: rgba(9,15,26,.86);
+    --stroke: rgba(148,163,184,.14);
+    --stroke-2: rgba(148,163,184,.26);
+    --text:#eaf1fa;
+    --muted:#9aabc2;
+    --dim:#6b7d94;
+    --amber:#fbbf24;
+    --amber-2:#f59e0b;
+    --sky:#38bdf8;
+    --emerald:#34d399;
+    --rose:#fb7185;
+    --violet:#a78bfa;
+    --shadow: 0 22px 50px -26px rgba(0,0,0,.9), 0 2px 10px rgba(0,0,0,.35);
+    --radius:18px;
+    --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  button,select,input{font-family:inherit}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  /* ---------- Escenario / 3D ---------- */
+  #stage{
+    position:relative;
+    height:100dvh;
+    min-height:560px;
+    overflow:hidden;
+    background:
+      radial-gradient(1100px 640px at 63% 14%, rgba(56,189,248,.13), transparent 62%),
+      radial-gradient(820px 560px at 18% 82%, rgba(251,191,36,.08), transparent 66%),
+      radial-gradient(700px 500px at 88% 88%, rgba(52,211,153,.05), transparent 70%),
+      linear-gradient(180deg,#060b14 0%,#05090f 55%,#04070c 100%);
+  }
+  #stage::after{
+    content:'';position:absolute;inset:0;pointer-events:none;z-index:4;
+    box-shadow:inset 0 0 190px 55px rgba(0,0,0,.55);
+    background:linear-gradient(180deg,rgba(4,7,13,.55),transparent 22%,transparent 74%,rgba(4,7,13,.55));
+  }
+  #canvasWrap{
+    position:absolute;inset:0;z-index:1;
+    cursor:grab;touch-action:none;
+  }
+  #canvasWrap.grabbing{cursor:grabbing}
+  #canvasWrap canvas{display:block;width:100%;height:100%}
+  #fallbackWrap{position:absolute;inset:0;z-index:1;display:none}
+  #fallbackWrap canvas{display:block;width:100%;height:100%}
+  #glFail{
+    position:absolute;left:50%;bottom:170px;transform:translateX(-50%);
+    z-index:5;display:none;max-width:420px;text-align:center;
+    font-size:11.5px;color:#fecdd3;background:rgba(89,15,35,.6);
+    border:1px solid rgba(251,113,133,.4);padding:8px 14px;border-radius:999px;
+    backdrop-filter:blur(8px);
+  }
+  #glFail.show{display:block}
+
+  /* ---------- Piezas flotantes genéricas ---------- */
+  .float{
+    position:absolute;z-index:6;
+    background:linear-gradient(165deg, var(--glass), var(--glass-2));
+    border:1px solid var(--stroke);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.06);
+    backdrop-filter:blur(20px) saturate(130%);
+    -webkit-backdrop-filter:blur(20px) saturate(130%);
+  }
+
+  /* ---------- Marca (arriba izquierda) ---------- */
+  .brand{
+    top:16px;left:16px;
+    display:flex;align-items:center;gap:11px;
+    padding:9px 15px 9px 10px;border-radius:16px;
+  }
+  .brand-mark{
+    width:38px;height:38px;border-radius:12px;flex:none;
+    display:grid;place-items:center;
+    background:linear-gradient(145deg,#fde68a,#f59e0b 55%,#d97706);
+    box-shadow:0 8px 22px -8px rgba(245,158,11,.9), inset 0 1px 0 rgba(255,255,255,.55);
+    color:#1a1206;
+  }
+  .brand-mark svg{width:22px;height:22px;display:block}
+  .brand h1{
+    margin:0;font-size:13.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+    line-height:1.1;color:#fff;
+  }
+  .brand h1 span{color:var(--amber);font-weight:800}
+  .brand p{
+    margin:3px 0 0;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);font-weight:600;
+  }
+
+  /* ---------- Condición ambiental (arriba centro) ---------- */
+  .weather{
+    top:16px;left:50%;transform:translateX(-50%);
+    padding:8px 10px 9px;border-radius:18px;
+    display:flex;flex-direction:column;gap:7px;align-items:center;
+  }
+  .weather-label{
+    font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);
+    font-weight:700;display:flex;align-items:center;gap:6px;
+  }
+  .weather-label b{color:var(--amber);font-weight:700;letter-spacing:.1em}
+  .wbtns{display:flex;gap:5px}
+  .wbtn{
+    display:flex;align-items:center;gap:5px;
+    padding:6px 10px;border-radius:10px;cursor:pointer;
+    background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.16);
+    color:#b7c5d8;font-size:11px;font-weight:600;line-height:1;
+    transition:all .18s ease;white-space:nowrap;
+  }
+  .wbtn .ico{font-size:12px;line-height:1}
+  .wbtn .pct{font-family:var(--mono);font-size:9.5px;color:var(--dim);font-weight:700}
+  .wbtn:hover{background:rgba(30,41,59,.85);color:#fff;border-color:rgba(251,191,36,.35)}
+  .wbtn.is-on{
+    background:linear-gradient(160deg,rgba(251,191,36,.22),rgba(245,158,11,.1));
+    border-color:rgba(251,191,36,.75);color:#fde68a;
+    box-shadow:0 0 0 1px rgba(251,191,36,.18) inset, 0 6px 18px -10px rgba(251,191,36,.85);
+  }
+  .wbtn.is-on .pct{color:#fcd34d}
+  .weather-now{font-size:10px;color:var(--muted);font-weight:500;letter-spacing:.02em}
+  .weather-now b{color:#fde68a;font-weight:700}
+
+  /* ---------- Narración (bajo el clima) ---------- */
+  .narration{
+    top:104px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:9px;
+    padding:8px 15px;border-radius:999px;
+    max-width:min(600px, calc(100vw - 760px));
+    pointer-events:none;
+  }
+  .narration .dot{
+    flex:none;width:7px;height:7px;border-radius:50%;background:var(--sky);
+    box-shadow:0 0 0 3px rgba(56,189,248,.16);transition:all .2s;
+  }
+  .narration p{
+    margin:0;font-size:11px;line-height:1.34;color:#dbe6f4;font-weight:500;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .narration p b{color:#fff;font-weight:700}
+  .narration.is-ok .dot{background:var(--emerald);box-shadow:0 0 0 3px rgba(52,211,153,.18)}
+  .narration.is-warn .dot{background:var(--amber);box-shadow:0 0 0 3px rgba(251,191,36,.18)}
+  .narration.is-stop .dot{background:var(--rose);box-shadow:0 0 0 3px rgba(251,113,133,.18)}
+
+  /* ---------- Sitio / utilidades (arriba derecha) ---------- */
+  .site{
+    top:16px;right:16px;
+    display:flex;align-items:center;gap:10px;
+    padding:8px 9px 8px 13px;border-radius:16px;
+  }
+  .site-info{display:flex;flex-direction:column;gap:2px;line-height:1.15}
+  .site-info .city{font-size:11.5px;font-weight:700;color:#e2eaf6;display:flex;align-items:center;gap:5px}
+  .site-info .meta{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .utools{display:flex;gap:5px}
+  .ubtn{
+    width:30px;height:30px;border-radius:9px;display:grid;place-items:center;cursor:pointer;
+    background:rgba(15,23,42,.7);border:1px solid rgba(148,163,184,.18);
+    color:#c3d2e5;font-size:13px;transition:all .16s;
+  }
+  .ubtn:hover{background:rgba(30,41,59,.95);color:#fff;border-color:rgba(148,163,184,.4)}
+
+  /* ---------- Columna de fórmulas ---------- */
+  .formulas{
+    left:16px;top:88px;
+    width:clamp(298px,23.6vw,344px);
+    display:flex;flex-direction:column;gap:9px;
+    position:absolute;z-index:6;
+  }
+  .fcard{
+    position:relative;overflow:hidden;
+    border-radius:15px;padding:10px 12px 9px;
+    background:linear-gradient(158deg, rgba(19,31,51,.93), rgba(8,14,24,.95));
+    border:1px solid rgba(148,163,184,.16);
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.05);
+    backdrop-filter:blur(16px) saturate(120%);
+  }
+  .fcard::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,var(--ac),transparent 78%);
+  }
+  .fcard::after{
+    content:'';position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 0% 0%, var(--ac-soft), transparent 62%);
+    opacity:.55;
+  }
+  .fcard--1{--ac:#60a5fa;--ac-soft:rgba(37,99,235,.22)}
+  .fcard--2{--ac:#34d399;--ac-soft:rgba(16,185,129,.2)}
+  .fcard--3{--ac:#fb7185;--ac-soft:rgba(244,63,94,.2)}
+  .fcard-top{display:flex;align-items:center;gap:7px;margin-bottom:7px;position:relative;z-index:1}
+  .fnum{
+    width:17px;height:17px;border-radius:5px;flex:none;display:grid;place-items:center;
+    font-family:var(--mono);font-size:9px;font-weight:700;color:#06111f;
+    background:linear-gradient(145deg,#fff,var(--ac));box-shadow:0 2px 8px -3px var(--ac);
+  }
+  .fcard-top h3{margin:0;font-size:10.5px;font-weight:700;letter-spacing:.03em;color:#f1f6fd;flex:1}
+  .ftag{
+    font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.04em;
+    color:var(--ac);background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.08);
+    padding:2px 6px;border-radius:5px;
+  }
+  .fformula{
+    position:relative;z-index:1;text-align:center;
+    font-family:var(--mono);font-size:12.5px;font-weight:700;color:#fff;
+    background:rgba(2,6,12,.55);border:1px solid rgba(148,163,184,.14);
+    border-radius:8px;padding:4px 6px;letter-spacing:.01em;
+  }
+  .fformula sub{font-size:8.5px;vertical-align:baseline}
+  .fsub{
+    position:relative;z-index:1;text-align:center;margin-top:3px;
+    font-family:var(--mono);font-size:9.5px;color:var(--muted);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .fmid{
+    position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:space-between;
+    margin-top:5px;padding-top:5px;border-top:1px dashed rgba(148,163,184,.14);
+  }
+  .fbig{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1;color:#fff;letter-spacing:-.02em}
+  .fbig small{font-size:9.5px;font-weight:600;color:var(--muted);margin-left:3px;letter-spacing:0}
+  .fsmall{text-align:right;line-height:1.2}
+  .fsmall span{display:block;font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:700}
+  .fsmall b{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--ac)}
+  .ffoot{
+    position:relative;z-index:1;margin-top:5px;padding:3px 7px;border-radius:6px;
+    background:rgba(2,6,12,.45);font-size:9px;line-height:1.35;color:#c2d2e6;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .ffoot b{color:#fff;font-family:var(--mono);font-weight:700}
+  .ffoot.is-accent{color:var(--ac)}
+
+  /* ---------- Panel de energía ---------- */
+  .energy{
+    right:16px;top:88px;
+    width:clamp(308px,24.8vw,356px);
+    padding:11px 12px 10px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .panel-head h2{
+    margin:0;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#dce7f5;
+  }
+  .live{
+    display:flex;align-items:center;gap:4px;font-size:8px;font-weight:800;letter-spacing:.12em;
+    color:var(--emerald);background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.28);
+    padding:2px 6px;border-radius:999px;text-transform:uppercase;
+  }
+  .live i{width:5px;height:5px;border-radius:50%;background:var(--emerald);box-shadow:0 0 0 2px rgba(52,211,153,.22);animation:blink 1.8s ease-in-out infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+  .equip{display:flex;gap:6px}
+  .equip label{
+    flex:1;display:flex;flex-direction:column;gap:2px;
+    font-size:7.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:700;
+  }
+  .equip select{
+    width:100%;appearance:none;
+    background:rgba(2,6,12,.6);border:1px solid rgba(148,163,184,.2);border-radius:7px;
+    color:#e4edf8;font-size:10.5px;font-weight:600;padding:4px 6px;cursor:pointer;outline:none;
+  }
+  .equip select:hover{border-color:rgba(56,189,248,.45)}
+
+  .elist{display:flex;flex-direction:column;border-radius:11px;overflow:hidden;border:1px solid rgba(148,163,184,.13)}
+  .erow{
+    display:flex;gap:9px;align-items:flex-start;
+    padding:7px 9px;background:rgba(2,6,12,.34);
+    border-bottom:1px solid rgba(148,163,184,.08);
+  }
+  .erow:last-child{border-bottom:0}
+  .erow--total{background:linear-gradient(90deg,rgba(56,189,248,.1),rgba(2,6,12,.34))}
+  .eico{
+    width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;font-size:12px;
+    background:rgba(15,23,42,.85);border:1px solid rgba(148,163,184,.16);
+  }
+  .ebody{flex:1;min-width:0}
+  .erow-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+  .erow-top span{font-size:10.5px;font-weight:600;color:#cfdcec}
+  .erow-top b{font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:-.01em}
+  .erow-top b small{font-size:9px;font-weight:600;color:var(--muted);margin-left:2px}
+  .pos{color:var(--emerald)}
+  .neg{color:var(--rose)}
+  .neu{color:#e2ecf8}
+  .ebar{height:3px;border-radius:999px;background:rgba(148,163,184,.14);margin:4px 0 3px;overflow:hidden}
+  .ebar i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#38bdf8,#34d399);transition:width .25s ease}
+  .ebar--amber i{background:linear-gradient(90deg,#fbbf24,#f59e0b)}
+  .erow-sub{font-size:8.5px;color:var(--dim);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .erow-sub b{font-family:var(--mono);color:#b9c9dd;font-weight:700}
+  .chip{
+    font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+    padding:2px 6px;border-radius:999px;cursor:pointer;border:1px solid transparent;
+    transition:all .16s;line-height:1.3;
+  }
+  .chip--on{background:rgba(251,191,36,.16);border-color:rgba(251,191,36,.5);color:#fde68a}
+  .chip--on:hover{background:rgba(251,191,36,.26)}
+  .chip--off{background:rgba(100,116,139,.14);border-color:rgba(148,163,184,.28);color:#a9b8cb}
+  .chip--off:hover{background:rgba(100,116,139,.26)}
+
+  /* Veredicto del motor */
+  .verdict{
+    border-radius:12px;padding:8px 10px 9px;
+    border:1px solid rgba(56,189,248,.3);
+    background:linear-gradient(155deg,rgba(8,47,73,.5),rgba(2,6,12,.6));
+    transition:border-color .25s, background .25s;
+  }
+  .verdict.is-ok{border-color:rgba(52,211,153,.42);background:linear-gradient(155deg,rgba(6,78,59,.42),rgba(2,6,12,.6))}
+  .verdict.is-warn{border-color:rgba(251,191,36,.42);background:linear-gradient(155deg,rgba(69,45,6,.45),rgba(2,6,12,.6))}
+  .verdict.is-stop{border-color:rgba(251,113,133,.45);background:linear-gradient(155deg,rgba(76,5,25,.45),rgba(2,6,12,.6))}
+  .verdict-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .pill{
+    font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 8px;border-radius:999px;background:rgba(56,189,248,.16);color:#7dd3fc;
+    border:1px solid rgba(56,189,248,.35);white-space:nowrap;
+  }
+  .verdict.is-ok .pill{background:rgba(52,211,153,.16);color:#6ee7b7;border-color:rgba(52,211,153,.4)}
+  .verdict.is-warn .pill{background:rgba(251,191,36,.16);color:#fcd34d;border-color:rgba(251,191,36,.4)}
+  .verdict.is-stop .pill{background:rgba(251,113,133,.18);color:#fda4af;border-color:rgba(251,113,133,.45)}
+  .vbeta{font-family:var(--mono);font-size:9px;color:#b9c9dd;letter-spacing:-.01em;white-space:nowrap}
+  .vnums{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}
+  .vnum{
+    background:rgba(2,6,12,.5);border:1px solid rgba(148,163,184,.12);
+    border-radius:8px;padding:4px 7px;line-height:1.15;
+  }
+  .vnum span{display:block;font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:700}
+  .vnum b{font-family:var(--mono);font-size:11.5px;font-weight:700}
+  .verdict p{
+    margin:6px 0 0;font-size:9px;line-height:1.35;color:#c3d3e6;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+
+  /* ---------- Dock inferior (línea de tiempo) ---------- */
+  .dock{
+    left:50%;transform:translateX(-50%);bottom:14px;
+    width:min(782px, calc(100vw - 36px));
+    padding:10px 14px 11px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .dock-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .dock-label{
+    font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:800;
+  }
+  .dock-label i{font-style:normal;text-transform:none;font-family:var(--mono);font-size:10px;color:#7dd3fc;letter-spacing:0;font-weight:700}
+  .dock-time{display:flex;align-items:baseline;gap:7px}
+  .dock-time b{font-family:var(--mono);font-size:19px;font-weight:700;color:#fff;letter-spacing:-.03em;line-height:1}
+  .dock-time small{font-family:var(--mono);font-size:9px;color:var(--dim);font-weight:600}
+  .dock-time .sep{width:1px;height:13px;background:rgba(148,163,184,.22);margin:0 3px}
+  .dock-time .sunv{font-size:9.5px;color:var(--muted);font-weight:600;letter-spacing:.02em}
+  .dock-time .sunv b{font-size:11px;color:var(--amber);letter-spacing:0}
+
+  /* pistas / raíles */
+  .track{position:relative;height:26px;display:flex;align-items:center;cursor:pointer;touch-action:none;outline:none}
+  .rail{position:relative;width:100%;height:6px;border-radius:999px;background:rgba(15,23,42,.95);border:1px solid rgba(148,163,184,.14);overflow:hidden}
+  .rail .fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:999px;background:linear-gradient(90deg,#f59e0b,#fbbf24 45%,#fde68a);opacity:.85}
+  .rail--beta .fill{background:linear-gradient(90deg,#0ea5e9,#38bdf8 50%,#7dd3fc)}
+  .rail .dayband{position:absolute;inset:0;background:linear-gradient(90deg,rgba(251,191,36,.05),rgba(253,230,138,.16) 50%,rgba(251,191,36,.05))}
+  .thumb{
+    position:absolute;top:50%;left:0;width:16px;height:16px;border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle at 35% 30%,#fff,#fde68a 45%,#f59e0b);
+    border:2px solid rgba(255,255,255,.85);
+    box-shadow:0 0 0 4px rgba(251,191,36,.16), 0 3px 10px rgba(0,0,0,.6), 0 0 14px rgba(251,191,36,.6);
+    pointer-events:none;transition:transform .08s ease;
+  }
+  .track:active .thumb{transform:translate(-50%,-50%) scale(1.12)}
+  .thumb--beta{
+    background:radial-gradient(circle at 35% 30%,#fff,#7dd3fc 45%,#0284c7);
+    box-shadow:0 0 0 4px rgba(56,189,248,.16), 0 3px 10px rgba(0,0,0,.6), 0 0 14px rgba(56,189,248,.6);
+  }
+  .ticks{position:relative;height:11px;margin-top:-3px}
+  .tick{position:absolute;top:0;transform:translateX(-50%);font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:-.02em}
+  .tick::before{content:'';position:absolute;left:50%;top:-5px;width:1px;height:3px;background:rgba(148,163,184,.3);transform:translateX(-50%)}
+  .tick.is-noon{color:#fcd34d;font-weight:700}
+
+  .dock-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding-top:2px}
+  .beta-block{min-width:0}
+  .beta-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:1px}
+  .beta-head b{font-family:var(--mono);font-size:12px;font-weight:700;color:#7dd3fc;letter-spacing:-.01em}
+  .beta-scale{display:flex;justify-content:space-between;font-size:7.5px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin-top:-2px}
+  .beta-scale .mid{color:#7dd3fc}
+
+  .play{
+    width:54px;height:54px;border-radius:50%;flex:none;cursor:pointer;border:0;
+    display:grid;place-items:center;position:relative;
+    background:linear-gradient(150deg,#fde68a,#fbbf24 45%,#f59e0b);
+    color:#231603;
+    box-shadow:0 12px 26px -10px rgba(245,158,11,.9), inset 0 1px 0 rgba(255,255,255,.65), 0 0 0 1px rgba(255,255,255,.18);
+    transition:transform .14s ease, box-shadow .18s ease;
+  }
+  .play:hover{transform:translateY(-1px) scale(1.03)}
+  .play:active{transform:scale(.97)}
+  .play svg{width:22px;height:22px;display:block;margin-left:2px}
+  .play.is-playing svg{margin-left:0}
+  .play.is-playing::after{
+    content:'';position:absolute;inset:-6px;border-radius:50%;
+    border:1px solid rgba(251,191,36,.5);animation:pulse 1.8s ease-out infinite;
+  }
+  @keyframes pulse{0%{transform:scale(.86);opacity:.85}100%{transform:scale(1.16);opacity:0}}
+
+  .dock-actions{display:flex;align-items:center;gap:5px;justify-content:flex-end}
+  .btn{
+    display:flex;align-items:center;gap:5px;cursor:pointer;
+    padding:6px 10px;border-radius:9px;font-size:10px;font-weight:700;
+    background:rgba(15,23,42,.85);border:1px solid rgba(148,163,184,.2);color:#cfdcec;
+    transition:all .16s;white-space:nowrap;
+  }
+  .btn:hover{background:rgba(30,41,59,.95);color:#fff;border-color:rgba(52,211,153,.5)}
+  .btn--primary{
+    background:linear-gradient(160deg,rgba(52,211,153,.22),rgba(16,185,129,.08));
+    border-color:rgba(52,211,153,.5);color:#a7f3d0;
+  }
+  .btn--primary:hover{background:rgba(52,211,153,.28);color:#d1fae5}
+  .btn--icon{width:29px;height:29px;padding:0;justify-content:center;font-size:13px}
+
+  /* ---------- Herramientas de cámara ---------- */
+  .cam{
+    right:16px;bottom:14px;display:flex;gap:5px;padding:5px;
+    border-radius:12px;align-items:center;
+  }
+  .cbtn{
+    width:30px;height:28px;border-radius:8px;cursor:pointer;border:1px solid transparent;
+    background:rgba(15,23,42,.7);color:#a9bacd;font-size:12.5px;
+    display:grid;place-items:center;transition:all .16s;
+  }
+  .cbtn:hover{background:rgba(30,41,59,.95);color:#fff}
+  .cbtn.is-on{
+    background:linear-gradient(160deg,rgba(56,189,248,.25),rgba(2,132,199,.12));
+    border-color:rgba(56,189,248,.55);color:#bae6fd;
+  }
+  .hint{
+    left:16px;bottom:14px;font-size:9.5px;color:var(--dim);display:flex;align-items:center;gap:5px;
+    padding:5px 10px;border-radius:999px;background:rgba(6,11,20,.6);
+    border:1px solid rgba(148,163,184,.1);pointer-events:none;
+  }
+  .hint b{color:#a9bacd;font-weight:600}
+
+  /* ---------- Modal de ayuda ---------- */
+  .modal{
+    position:fixed;inset:0;z-index:40;display:none;
+    align-items:center;justify-content:center;padding:18px;
+    background:rgba(2,5,10,.72);backdrop-filter:blur(6px);
+  }
+  .modal.show{display:flex}
+  .modal-card{
+    width:min(560px,100%);max-height:84vh;overflow:auto;
+    border-radius:18px;border:1px solid rgba(148,163,184,.2);
+    background:linear-gradient(165deg,#101b2c,#070c15);
+    box-shadow:0 40px 90px -30px rgba(0,0,0,.95);
+    padding:16px 18px 18px;
+  }
+  .modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .modal-head h2{margin:0;font-size:13px;font-weight:800;letter-spacing:.02em;color:#fff}
+  .modal-body{display:flex;flex-direction:column;gap:9px}
+  .mblock{
+    border-radius:11px;padding:9px 11px;font-size:10.5px;line-height:1.5;color:#c8d6e7;
+    background:rgba(2,6,12,.5);border-left:2px solid var(--sky);
+  }
+  .mblock b{color:#fff;font-weight:700}
+  .mblock code{font-family:var(--mono);font-size:9.5px;color:#fde68a;background:rgba(0,0,0,.4);padding:1px 4px;border-radius:4px}
+  .mblock:nth-child(2){border-left-color:var(--emerald)}
+  .mblock:nth-child(3){border-left-color:var(--violet)}
+  .mblock:nth-child(4){border-left-color:var(--amber)}
+
+  /* ---------- Responsive ---------- */
+  @media (max-width:1180px){
+    .narration{max-width:min(520px, calc(100vw - 700px))}
+    .formulas{width:288px}
+    .energy{width:300px}
+  }
+  @media (max-height:800px){
+    .formulas{top:80px;gap:7px}
+    .fcard{padding:8px 11px 8px}
+    .fbig{font-size:18px}
+    .energy{top:80px;gap:6px;padding:9px 10px}
+    .erow{padding:6px 8px}
+    .dock{padding:8px 13px 9px;gap:6px}
+    .play{width:48px;height:48px}
+  }
+  @media (max-width:1023px){
+    body{overflow:auto}
+    #stage{height:auto;min-height:100dvh;padding-bottom:8px}
+    #canvasWrap{position:relative;height:56vw;min-height:290px;max-height:60vh;inset:auto}
+    #fallbackWrap{position:relative;height:56vw;min-height:290px}
+    .brand,.weather,.site,.narration,.formulas,.energy,.dock,.cam,.hint{position:relative;inset:auto;transform:none;left:auto;right:auto;top:auto;bottom:auto}
+    .brand,.weather,.site,.narration{width:calc(100% - 24px);margin:10px auto 0;max-width:none}
+    .weather{align-items:flex-start}
+    .wbtns{flex-wrap:wrap}
+    .narration p{white-space:normal}
+    .formulas,.energy{width:calc(100% - 24px);margin:10px auto 0}
+    .dock{width:calc(100% - 24px);margin:10px auto 0}
+    .cam{width:calc(100% - 24px);margin:8px auto 0;justify-content:center}
+    .hint{display:none}
+    #stage::after{display:none}
+    .dock-row{grid-template-columns:1fr auto;row-gap:8px}
+    .dock-actions{grid-column:1/-1;justify-content:center}
+    .play{grid-row:1;justify-self:end}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- Capa 3D -->
+  <div id="canvasWrap"></div>
+  <div id="fallbackWrap"><canvas id="fallbackCanvas"></canvas></div>
+  <div id="glFail">⚠️ No se pudo cargar el motor 3D (Three.js). Se muestra la vista técnica 2D.</div>
+
+  <!-- Marca -->
+  <header class="float brand">
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+        <circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none"/>
+        <path d="M12 2.4v2.2M12 19.4v2.2M2.4 12h2.2M19.4 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <h1>SolarLab <span>Pro</span></h1>
+      <p>Gemelo digital · seguidor solar E–O</p>
+    </div>
+  </header>
+
+  <!-- Condición ambiental -->
+  <section class="float weather" aria-label="Condición ambiental">
+    <div class="weather-label">Condición ambiental <b id="weatherPct">95%</b></div>
+    <div class="wbtns" id="weatherBtns">
+      <button type="button" class="wbtn is-on" data-w="0.95" title="Cielo despejado"><span class="ico">☀️</span>Soleado<span class="pct">95%</span></button>
+      <button type="button" class="wbtn" data-w="0.60" title="Nubes parciales"><span class="ico">⛅</span>Parcial<span class="pct">60%</span></button>
+      <button type="button" class="wbtn" data-w="0.25" title="Cielo cubierto"><span class="ico">☁️</span>Nublado<span class="pct">25%</span></button>
+      <button type="button" class="wbtn" data-w="0.10" title="Lluvia densa"><span class="ico">🌧️</span>Denso<span class="pct">10%</span></button>
+    </div>
+    <div class="weather-now" id="weatherNow">Cielo despejado · radiación <b>95%</b></div>
+  </section>
+
+  <!-- Narración en vivo -->
+  <div class="float narration" id="narration">
+    <span class="dot"></span>
+    <p id="narrationText">El sol está a θ = 64° y el panel a β = 90°.</p>
+  </div>
+
+  <!-- Sitio + utilidades -->
+  <div class="float site">
+    <div class="site-info">
+      <span class="city">📍 Bogotá <span style="color:#64748b;font-weight:500">·</span> <span style="font-family:var(--mono);font-weight:600;font-size:11px">4.6° N</span></span>
+      <span class="meta">21 de marzo · equinoccio</span>
+    </div>
+    <div class="utools">
+      <button type="button" class="ubtn" id="btnHelp" title="Cómo leer el simulador" aria-label="Ayuda">?</button>
+      <button type="button" class="ubtn" id="btnFull" title="Pantalla completa" aria-label="Pantalla completa">⛶</button>
+    </div>
+  </div>
+
+  <!-- Columna de fórmulas -->
+  <section class="formulas" aria-label="Las tres fórmulas del modelo">
+
+    <article class="fcard fcard--1">
+      <div class="fcard-top">
+        <span class="fnum">1</span>
+        <h3>Función de energía</h3>
+        <span class="ftag">E(β)</span>
+      </div>
+      <div class="fformula">E = E<sub>max</sub> · cos(β − θ)</div>
+      <div class="fsub" id="eqSub1">E = 2.98 · cos(90° − 64°)</div>
+      <div class="fmid">
+        <div class="fbig"><span id="resP">2.69</span><small>W</small></div>
+        <div class="fsmall"><span>Aprovechamiento</span><b id="resEff">90.1%</b></div>
+      </div>
+      <div class="ffoot" id="explainP">Máximo disponible: <b id="valPDisp">2.98 W</b></div>
+    </article>
+
+    <article class="fcard fcard--2">
+      <div class="fcard-top">
+        <span class="fnum">2</span>
+        <h3>Primera derivada</h3>
+        <span class="ftag">E′(β)</span>
+      </div>
+      <div class="fformula">E′ = −E<sub>max</sub> · sen(β − θ)</div>
+      <div class="fsub" id="eqSub2">E′ = −2.98 · sen(90° − 64°)</div>
+      <div class="fmid">
+        <div class="fbig"><span id="resP1">−1.26</span></div>
+        <div class="fsmall"><span>Cambio por grado</span><b id="resP1Deg">−0.022 W/°</b></div>
+      </div>
+      <div class="ffoot is-accent" id="explainP1">E′ &lt; 0 → baja β para acercarte al sol.</div>
+    </article>
+
+    <article class="fcard fcard--3">
+      <div class="fcard-top">
+        <span class="fnum">3</span>
+        <h3>Segunda derivada</h3>
+        <span class="ftag">E″(β)</span>
+      </div>
+      <div class="fformula">E″ = −E<sub>max</sub> · cos(β − θ)</div>
+      <div class="fsub" id="eqSub3">E″ = −2.98 · cos(90° − 64°)</div>
+      <div class="fmid">
+        <div class="fbig"><span id="resP2">−2.69</span></div>
+        <div class="fsmall"><span>Concavidad</span><b id="resConcavity">Máximo ✓</b></div>
+      </div>
+      <div class="ffoot is-accent" id="explainP2">E″ &lt; 0 → confirma el punto de máxima energía.</div>
+    </article>
+  </section>
+
+  <!-- Panel de energía -->
+  <aside class="float energy" aria-label="Balance energético y viabilidad">
+    <div class="panel-head">
+      <h2>Balance energético</h2>
+      <span class="live"><i></i>En vivo</span>
+    </div>
+
+    <div class="equip">
+      <label>Panel
+        <select id="selectPanelWatts">
+          <option value="2">2.0 W</option>
+          <option value="3.5" selected>3.5 W</option>
+          <option value="6">6.0 W</option>
+        </select>
+      </label>
+      <label>Lámpara de jardín
+        <select id="selectLampWatts">
+          <option value="0.3">0.3 W</option>
+          <option value="0.6" selected>0.6 W</option>
+          <option value="1.5">1.5 W</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="elist">
+      <div class="erow">
+        <div class="eico">☀️</div>
+        <div class="ebody">
+          <div class="erow-top">
+            <span>El panel gana</span>
+            <b class="pos">+<span id="valPanelGainW">2.69</span><small>W</small></b>
+          </div>
+          <div class="ebar"><i id="barPanelEff"></i></div>
+          <div class="erow-sub">máx. disponible <b id="valPanelMax">2.98 W</b> · aprovecha <b id="valPanelEff">90.1%</b></div>
+        </div>
+      </div>
+
+      <div class="erow">
+        <div class="eico">🏮</div>
+        <div class="ebody">
+          <div class="erow-top">
+            <span>Lámpara de jardín</span>
+            <b class="neg">−<span id="valLampW">0.60</span><small>W</small></b>
+          </div>
+          <div class="erow-sub">
+            <button type="button" class="chip chip--on" id="btnLamp">Encendida</button>
+            <span id="lampNote" style="margin-left:5px">consumo constante mientras esté encendida</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="erow">
+        <div class="eico">⚙️</div>
+        <div class="ebody">
+          <div class="erow-top">
+            <span>Motor SG90</span>
+            <b class="neg">−<span id="valMotorMWh">0.29</span><small>mWh</small></b>
+          </div>
+          <div class="erow-sub" id="motorNote">giro de <b>Δβ 25.7°</b> · <b>en reposo</b></div>
+        </div>
+      </div>
+
+      <div class="erow erow--total">
+        <div class="eico">⚖️</div>
+        <div class="ebody">
+          <div class="erow-top">
+            <span>Balance del sistema</span>
+            <b id="valBalance" class="pos">+2.09<small>W</small></b>
+          </div>
+          <div class="ebar ebar--amber"><i id="barBalance"></i></div>
+          <div class="erow-sub" id="balanceNote">excedente después de alimentar la lámpara</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="verdict" id="verdict">
+      <div class="verdict-head">
+        <span class="pill" id="verdictPill">✅ Conviene mover</span>
+        <span class="vbeta" id="verdictBeta">β 90° → 64°</span>
+      </div>
+      <div class="vnums">
+        <div class="vnum"><span>Ganancia · 15 min</span><b class="pos" id="valGainMWh">+73.2 mWh</b></div>
+        <div class="vnum"><span>Costo del giro</span><b class="neg" id="valCostMWh">−0.29 mWh</b></div>
+      </div>
+      <p id="verdictReason">Alinear el panel cuesta 0.29 mWh y gana 73.2 mWh en 15 minutos.</p>
+    </div>
+  </aside>
+
+  <!-- Dock: línea de tiempo del día -->
+  <footer class="float dock" aria-label="Línea de tiempo del día">
+    <div class="dock-head">
+      <span class="dock-label">Línea de tiempo del día</span>
+      <div class="dock-time">
+        <b id="valHourBig">10:18</b><small>h</small>
+        <span class="sep"></span>
+        <span class="sunv">sol θ <b id="valThetaBig">64.3°</b></span>
+      </div>
+    </div>
+
+    <div class="track" id="timeTrack" role="slider" tabindex="0"
+         aria-label="Hora del día" aria-valuemin="6" aria-valuemax="18" aria-valuenow="10.3">
+      <div class="rail"><div class="dayband"></div><div class="fill" id="timeFill"></div></div>
+      <div class="thumb" id="timeThumb"></div>
+    </div>
+    <div class="ticks" id="timeTicks"></div>
+
+    <div class="dock-row">
+      <div class="beta-block">
+        <div class="beta-head">
+          <span class="dock-label">Inclinación del panel <i>β</i></span>
+          <b id="valBetaBig">90.0°</b>
+        </div>
+        <div class="track" id="betaTrack" role="slider" tabindex="0"
+             aria-label="Inclinación del panel" aria-valuemin="55" aria-valuemax="125" aria-valuenow="90">
+          <div class="rail rail--beta"><div class="fill" id="betaFill"></div></div>
+          <div class="thumb thumb--beta" id="betaThumb"></div>
+        </div>
+        <div class="beta-scale"><span>55° este</span><span class="mid">90° plano</span><span>125° oeste</span></div>
+      </div>
+
+      <button type="button" class="play" id="btnPlay" aria-label="Reproducir el día">
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6c0 .8.9 1.3 1.6.9l10.2-6.8c.6-.4.6-1.4 0-1.8L9.6 4.3C8.9 3.9 8 4.4 8 5.2z"/></svg>
+      </button>
+
+      <div class="dock-actions">
+        <button type="button" class="btn btn--primary" id="btnAlign" title="Mover el servo al ángulo óptimo">🎯 Alinear</button>
+        <button type="button" class="btn btn--icon" id="btnReset" title="Volver al estado inicial" aria-label="Reiniciar">↺</button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Cámara -->
+  <div class="float cam" aria-label="Vistas de cámara">
+    <button type="button" class="cbtn is-on" data-cam="iso" title="Vista 3D isométrica">🧊</button>
+    <button type="button" class="cbtn" data-cam="top" title="Vista cenital">🔭</button>
+    <button type="button" class="cbtn" data-cam="front" title="Vista frontal (corte este–oeste)">📐</button>
+  </div>
+
+  <div class="float hint">🖱️ <b>Arrastra</b> para orbitar · <b>rueda</b> para zoom · <b>espacio</b> = play</div>
+</div>
+
+<!-- Modal de ayuda -->
+<div class="modal" id="helpModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>Cómo leer el simulador en 3 pasos</h2>
+      <button type="button" class="ubtn" id="btnCloseHelp" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="mblock">
+        <b>1 · Las tres fórmulas.</b> La energía que capta el panel es
+        <code>E = E_max · cos(β − θ)</code>. Su primera derivada <code>E′</code> es la pendiente: cuando vale
+        <b>0</b>, el panel mira directo al sol. La segunda derivada <code>E″</code> es negativa y confirma que
+        ese punto es el <b>máximo</b> (no un mínimo).
+      </div>
+      <div class="mblock">
+        <b>2 · ¿Cuándo conviene mover el motor?</b> El servo gasta energía en cada giro. El simulador compara
+        lo que <b>ganas</b> en una ventana de 15 minutos contra lo que <b>cuesta</b> ese giro: solo si la
+        ganancia supera al costo (con 25 % de margen) el panel se mueve. Si no, se queda quieto y ahorra.
+      </div>
+      <div class="mblock">
+        <b>3 · Los límites mecánicos.</b> El panel está montado sobre un eje: 90° es plano y solo puede
+        inclinarse entre <b>55° (este)</b> y <b>125° (oeste)</b>. Cuando el sol sale de ese rango, el panel
+        descansa en el tope y el arco verde se ilumina en rojo.
+      </div>
+      <div class="mblock">
+        <b>4 · Controles.</b> Arriba eliges la <b>condición ambiental</b> (nubosidad). Abajo está la
+        <b>línea de tiempo</b>: arrastra la hora, ajusta la inclinación β o pulsa <b>play</b> para simular el
+        día completo de 06:00 a 18:00. Con el ratón puedes orbitar y hacer zoom en la maqueta.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ============================================================
+     0 · Utilidades
+     ============================================================ */
+  const $  = (id) => document.getElementById(id);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const rad = (d) => d * Math.PI / 180;
+  const deg = (r) => r * 180 / Math.PI;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const fmt = (v, n) => Number(v).toFixed(n);
+
+  /* ============================================================
+     1 · Estado del gemelo digital
+     ============================================================ */
+  const SITE = { lat: 4.6, day: 80 };   // Bogotá · 21 de marzo (equinoccio)
+
+  const S = {
+    hour: 10.3,          // hora solar decimal
+    beta: 90,            // inclinación real del panel
+    visualBeta: 90,      // inclinación interpolada para la animación del servo
+    betaMin: 55,
+    betaMax: 125,
+    weather: 0.95,
+    panelW: 3.5,
+    lampW: 0.6,
+    lampOn: true,
+    servoW: 1.25,        // consumo del servo mientras gira [W]
+    servoSpeed: 25,      // velocidad angular [°/s]
+    servoJ: 0.35,        // energía de arranque [J]
+    windowMin: 15,       // ventana de evaluación energética [min]
+    playing: false,
+    timer: null,
+    movingUntil: 0,
+    cam: { mode: 'iso', yaw: 0.46, pitch: 0.30, dist: 15.0,
+           tYaw: 0.46, tPitch: 0.30, tDist: 15.0 },
+    model: null
+  };
+
+  /* ============================================================
+     2 · Posición del sol (plano este–oeste)
+     θ = 0° en el horizonte ESTE · 90° cenit · 180° horizonte OESTE
+     ============================================================ */
+  function solarPosition(hour) {
+    const delta = 23.45 * Math.sin(rad((360 / 365) * (284 + SITE.day)));  // declinación
+    const omega = (hour - 12) * 15;                                        // ángulo horario
+    const phi = rad(SITE.lat), d = rad(delta), w = rad(omega);
+
+    let sinAlt = Math.sin(phi) * Math.sin(d) + Math.cos(phi) * Math.cos(d) * Math.cos(w);
+    sinAlt = clamp(sinAlt, -1, 1);
+    const alt = deg(Math.asin(sinAlt));          // altura real sobre el horizonte
+
+    const east = -Math.cos(d) * Math.sin(w);     // componente ESTE (+ = este)
+    const up = Math.max(0.00005, sinAlt);        // componente vertical
+    const theta = clamp(deg(Math.atan2(up, east)), 0, 180);
+
+    return { delta, omega, alt: Math.max(0, alt), theta };
+  }
+
+  /* ============================================================
+     3 · Modelo energético (sin batería: solo potencias y costos)
+     ============================================================ */
+  function computeModel() {
+    const astro = solarPosition(S.hour);
+    const theta = astro.theta;
+    const beta = S.beta;
+
+    // Ángulo óptimo alcanzable dentro de los topes mecánicos
+    const betaOpt = clamp(theta, S.betaMin, S.betaMax);
+    const enTope = theta < S.betaMin || theta > S.betaMax;
+
+    // Energía máxima disponible en el plano del panel
+    const sinAlt = Math.max(0, Math.sin(rad(astro.alt)));
+    const Emax = S.panelW * S.weather * Math.max(0.10, sinAlt);
+
+    const diffRad = rad(beta - theta);
+    const cosErr = Math.cos(diffRad);
+
+    const P    = Math.max(Emax * 0.04, Emax * cosErr);                    // W captados
+    const Popt = Math.max(Emax * 0.04, Emax * Math.cos(rad(betaOpt - theta)));
+    const P1   = -Emax * Math.sin(diffRad);                               // E'
+    const P2   = -Emax * cosErr;                                          // E''
+
+    // Costo energético del giro del servo
+    const dBeta = Math.abs(betaOpt - beta);
+    const moveTime = dBeta / S.servoSpeed;
+    const moveJ = dBeta > 0.5 ? (S.servoW * moveTime + S.servoJ) : 0;
+    const moveMWh = moveJ / 3.6;                     // 1 mWh = 3.6 J
+
+    // Ganancia energética en la ventana de evaluación
+    const gainW = Math.max(0, Popt - P);
+    const gainMWh = gainW * (S.windowMin / 60) * 1000;
+
+    const viable = dBeta >= 2 && gainMWh > moveMWh * 1.25;
+    const errDeg = Math.abs(beta - theta);
+
+    const lampW = S.lampOn ? S.lampW : 0;
+    const balance = P - lampW;
+
+    return {
+      astro, theta, beta, betaOpt, enTope, Emax, P, Popt, P1, P2,
+      dBeta, errDeg, moveJ, moveMWh, gainW, gainMWh, viable,
+      lampW, balance, moving: performance.now() < S.movingUntil
+    };
+  }
+
+  /* ============================================================
+     4 · Pintado de la interfaz
+     ============================================================ */
+  function refresh() {
+    const m = computeModel();
+    S.model = m;
+
+    const t = minutesLabel(S.hour);
+    $('valHourBig').textContent = t;
+    $('valThetaBig').textContent = fmt(m.theta, 1) + '°';
+    $('valBetaBig').textContent = fmt(S.beta, 1) + '°';
+
+    // ---- Rieles ----
+    const pt = clamp((S.hour - 6) / 12, 0, 1) * 100;
+    const pb = clamp((S.beta - S.betaMin) / (S.betaMax - S.betaMin), 0, 1) * 100;
+    $('timeFill').style.width = pt + '%';
+    $('timeThumb').style.left = pt + '%';
+    $('betaFill').style.width = pb + '%';
+    $('betaThumb').style.left = pb + '%';
+    $('timeTrack').setAttribute('aria-valuenow', fmt(S.hour, 2));
+    $('betaTrack').setAttribute('aria-valuenow', fmt(S.beta, 1));
+
+    // ---- Fórmula 1 · Energía ----
+    $('eqSub1').textContent = `E = ${fmt(m.Emax, 2)} · cos(${Math.round(S.beta)}° − ${Math.round(m.theta)}°)`;
+    $('resP').textContent = fmt(m.P, 2);
+    const eff = m.Emax > 0 ? clamp((m.P / m.Emax) * 100, 0, 100) : 0;
+    $('resEff').textContent = fmt(eff, 1) + '%';
+    $('valPDisp').textContent = fmt(m.Emax, 2) + ' W';
+    $('explainP').innerHTML = `Máximo disponible: <b>${fmt(m.Emax, 2)} W</b>`;
+
+    // ---- Fórmula 2 · Primera derivada ----
+    $('eqSub2').textContent = `E′ = −${fmt(m.Emax, 2)} · sen(${Math.round(S.beta)}° − ${Math.round(m.theta)}°)`;
+    $('resP1').textContent = (m.P1 >= 0 ? '+' : '−') + fmt(Math.abs(m.P1), 2);
+    const perDeg = m.P1 * (Math.PI / 180);
+    $('resP1Deg').textContent = (perDeg >= 0 ? '+' : '−') + fmt(Math.abs(perDeg), 3) + ' W/°';
+
+    if (m.errDeg < 1) {
+      $('explainP1').innerHTML = '✓ <b>E′ = 0</b> → rayos perpendiculares al panel.';
+    } else if (m.P1 > 0) {
+      $('explainP1').innerHTML = `↑ <b>E′ &gt; 0</b> → sube β hacia ${Math.round(m.betaOpt)}°.`;
+    } else {
+      $('explainP1').innerHTML = `↓ <b>E′ &lt; 0</b> → baja β hacia ${Math.round(m.betaOpt)}°.`;
+    }
+
+    // ---- Fórmula 3 · Segunda derivada ----
+    $('eqSub3').textContent = `E″ = −${fmt(m.Emax, 2)} · cos(${Math.round(S.beta)}° − ${Math.round(m.theta)}°)`;
+    $('resP2').textContent = (m.P2 >= 0 ? '+' : '−') + fmt(Math.abs(m.P2), 2);
+    if (m.P2 < -0.02) {
+      $('resConcavity').textContent = 'Máximo ✓';
+      $('explainP2').innerHTML = '✓ <b>E″ &lt; 0</b> → confirma el punto de máxima energía.';
+    } else if (m.P2 > 0.02) {
+      $('resConcavity').textContent = 'Mínimo';
+      $('explainP2').innerHTML = '⚠️ <b>E″ &gt; 0</b> → el panel está en un mínimo (sol a la espalda).';
+    } else {
+      $('resConcavity').textContent = 'Sol rasante';
+      $('explainP2').innerHTML = '• <b>E″ ≈ 0</b> → el sol roza el plano del panel.';
+    }
+
+    // ---- Panel de energía ----
+    $('valPanelGainW').textContent = fmt(m.P, 2);
+    $('valPanelMax').textContent = fmt(m.Emax, 2) + ' W';
+    $('valPanelEff').textContent = fmt(eff, 1) + '%';
+    $('barPanelEff').style.width = clamp(eff, 0, 100) + '%';
+
+    $('valLampW').textContent = fmt(m.lampW, 2);
+    const chip = $('btnLamp');
+    chip.textContent = S.lampOn ? 'Encendida' : 'Apagada';
+    chip.className = S.lampOn ? 'chip chip--on' : 'chip chip--off';
+    $('lampNote').textContent = S.lampOn
+      ? 'consume mientras esté encendida'
+      : 'sin consumo: el panel no alimenta nada';
+
+    $('valMotorMWh').textContent = fmt(m.moveMWh, 2);
+    const motorState = m.dBeta < 0.5 ? 'ya está óptimo'
+                     : m.moving ? 'moviendo servo'
+                     : m.viable ? 'listo para moverse'
+                     : 'en reposo';
+    $('motorNote').innerHTML = `giro de <b>Δβ ${fmt(m.dBeta, 1)}°</b> · <b>${motorState}</b>`;
+
+    const bal = $('valBalance');
+    bal.innerHTML = (m.balance >= 0 ? '+' : '−') + fmt(Math.abs(m.balance), 2) + '<small>W</small>';
+    bal.className = m.balance >= 0 ? 'pos' : 'neg';
+    $('balanceNote').textContent = m.balance >= 0
+      ? 'excedente después de alimentar la lámpara'
+      : 'la lámpara pide más de lo que el panel entrega';
+    $('barBalance').style.width = clamp((m.lampW / Math.max(m.P, 0.001)) * 100, 0, 100) + '%';
+
+    // ---- Veredicto ----
+    const v = verdictOf(m);
+    const vc = $('verdict');
+    vc.className = 'verdict ' + v.cls;
+    $('verdictPill').textContent = v.pill;
+    $('verdictBeta').textContent = v.betaTxt;
+    $('valGainMWh').textContent = (m.gainMWh >= 0 ? '+' : '−') + fmt(Math.abs(m.gainMWh), 1) + ' mWh';
+    $('valCostMWh').textContent = '−' + fmt(m.moveMWh, 2) + ' mWh';
+    $('verdictReason').textContent = v.reason;
+
+    // ---- Narración ----
+    const nar = $('narration');
+    nar.className = 'float narration ' + v.ncls;
+    $('narrationText').innerHTML = v.narration;
+
+    // ---- Condición ambiental ----
+    $('weatherPct').textContent = Math.round(S.weather * 100) + '%';
+    $('weatherNow').innerHTML = weatherText() + ' · radiación <b>' + Math.round(S.weather * 100) + '%</b>';
+  }
+
+  function verdictOf(m) {
+    if (m.dBeta < 1) {
+      if (m.enTope) {
+        return {
+          cls: 'is-warn',
+          pill: '🛑 Tope mecánico',
+          betaTxt: `β ${Math.round(S.beta)}° · límite`,
+          reason: `El sol va en θ = ${fmt(m.theta, 0)}°, fuera del rango del mecanismo (55°–125°). El panel ya descansa en el tope.`,
+          ncls: 'is-warn',
+          narration: `🛑 <b>Tope mecánico:</b> el sol está a <b>${fmt(m.theta, 0)}°</b> pero el panel se detiene en <b>${Math.round(S.beta)}°</b>.`
+        };
+      }
+      return {
+        cls: 'is-ok',
+        pill: '✓ Panel alineado',
+        betaTxt: `β ${Math.round(S.beta)}° = θ ${fmt(m.theta, 0)}°`,
+        reason: 'El panel apunta directo al sol (E′ = 0). Mover el motor no aportaría nada: se queda en reposo.',
+        ncls: 'is-ok',
+        narration: `✅ <b>Alineado:</b> sol y panel a <b>${Math.round(S.beta)}°</b>, <b>E′ = 0</b>. Máxima captación posible: <b>${fmt(m.P, 2)} W</b>.`
+      };
+    }
+    if (m.viable) {
+      return {
+        cls: '',
+        pill: '✅ Conviene mover',
+        betaTxt: `β ${Math.round(S.beta)}° → ${Math.round(m.betaOpt)}°`,
+        reason: `Alinear a ${Math.round(m.betaOpt)}° cuesta ${fmt(m.moveMWh, 2)} mWh y gana +${fmt(m.gainMWh, 1)} mWh en 15 min. El servo sí conviene.`,
+        ncls: '',
+        narration: `🔎 El sol va <b>${fmt(m.errDeg, 0)}°</b> por delante: mover el servo a <b>${Math.round(m.betaOpt)}°</b> gana <b>+${fmt(m.gainMWh, 1)} mWh</b> y cuesta solo <b>${fmt(m.moveMWh, 2)} mWh</b>.`
+      };
+    }
+    return {
+      cls: 'is-warn',
+      pill: '⏸ No conviene mover',
+      betaTxt: `β ${Math.round(S.beta)}° → ${Math.round(m.betaOpt)}°`,
+      reason: `La ganancia en 15 min (+${fmt(m.gainMWh, 1)} mWh) no supera el costo del giro (${fmt(m.moveMWh, 2)} mWh). Mejor no gastar.`,
+      ncls: 'is-warn',
+      narration: `⏸ Desalineado <b>${fmt(m.errDeg, 0)}°</b>, pero mover gastaría <b>${fmt(m.moveMWh, 2)} mWh</b> y solo ganaría <b>+${fmt(m.gainMWh, 1)} mWh</b>: el panel no se mueve.`
+    };
+  }
+
+  function weatherText() {
+    if (S.weather > 0.8) return 'Cielo despejado';
+    if (S.weather > 0.45) return 'Nubes parciales';
+    if (S.weather > 0.18) return 'Cielo cubierto';
+    return 'Lluvia densa';
+  }
+
+  function minutesLabel(h) {
+    const total = Math.round(h * 60);
+    const hh = Math.floor(total / 60), mm = total % 60;
+    return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  }
+
+  /* ============================================================
+     5 · Rieles (hora e inclinación)
+     ============================================================ */
+  function bindTrack(el, min, max, onInput) {
+    let active = false;
+    const apply = (clientX) => {
+      const rail = el.querySelector('.rail').getBoundingClientRect();
+      const p = clamp((clientX - rail.left) / rail.width, 0, 1);
+      onInput(min + p * (max - min));
+    };
+    el.addEventListener('pointerdown', (e) => {
+      active = true; el.setPointerCapture(e.pointerId); apply(e.clientX); e.preventDefault();
+    });
+    el.addEventListener('pointermove', (e) => { if (active) apply(e.clientX); });
+    el.addEventListener('pointerup', () => { active = false; });
+    el.addEventListener('pointercancel', () => { active = false; });
+    el.addEventListener('keydown', (e) => {
+      const step = (max - min) / 100;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onInput(clamp(parseFloat(el.getAttribute('aria-valuenow')) - step * 4, min, max)); }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onInput(clamp(parseFloat(el.getAttribute('aria-valuenow')) + step * 4, min, max)); }
+    });
+  }
+
+  function buildTicks() {
+    const wrap = $('timeTicks');
+    wrap.innerHTML = '';
+    for (let h = 6; h <= 18; h += 2) {
+      const d = document.createElement('span');
+      d.className = 'tick' + (h === 12 ? ' is-noon' : '');
+      d.style.left = ((h - 6) / 12 * 100) + '%';
+      d.textContent = String(h).padStart(2, '0');
+      wrap.appendChild(d);
+    }
+  }
+
+  /* ============================================================
+     6 · Reproducción del día
+     ============================================================ */
+  const HOURS_PER_SECOND = 0.85;   // 12 h ≈ 14 s
+
+  function setPlaying(on) {
+    S.playing = on;
+    const btn = $('btnPlay');
+    btn.classList.toggle('is-playing', on);
+    btn.setAttribute('aria-label', on ? 'Pausar el día' : 'Reproducir el día');
+    $('playIcon').innerHTML = on
+      ? '<rect x="6.4" y="4.6" width="4.2" height="14.8" rx="1.4"></rect><rect x="13.4" y="4.6" width="4.2" height="14.8" rx="1.4"></rect>'
+      : '<path d="M8 5.2v13.6c0 .8.9 1.3 1.6.9l10.2-6.8c.6-.4.6-1.4 0-1.8L9.6 4.3C8.9 3.9 8 4.4 8 5.2z"/>';
+  }
+
+  function togglePlay() {
+    if (S.playing) {
+      clearInterval(S.timer);
+      S.timer = null;
+      setPlaying(false);
+      return;
+    }
+    if (S.hour >= 17.95) S.hour = 6;
+    setPlaying(true);
+    let last = performance.now();
+    S.timer = setInterval(() => {
+      const now = performance.now();
+      const dt = Math.min(0.15, (now - last) / 1000);
+      last = now;
+
+      S.hour += dt * HOURS_PER_SECOND;
+      if (S.hour >= 18) S.hour = 18;
+
+      autoDecision();
+
+      if (S.hour >= 18) {
+        clearInterval(S.timer);
+        S.timer = null;
+        setPlaying(false);
+      }
+      refresh();
+    }, 55);
+  }
+
+  function autoDecision() {
+    const m = computeModel();
+    if (m.viable) {
+      S.beta = m.betaOpt;
+      S.movingUntil = performance.now() + 650;
+    }
+  }
+
+  /* ============================================================
+     7 · Three.js — maqueta 3D
+     ============================================================ */
+  let scene, camera, renderer;
+  let sunMesh, sunGlow, sunLight, sunTarget, rayLine;
+  let panelPivot, lampGlow, lampGlassMat, lampLight, lampPool, servoLed;
+  let stopEast, stopWest, sunPathLine;
+  let photons = [], wires = [];
+  let webglReady = false;
+  let fallback2D = false;
+
+  const PIVOT = { x: -2.35, y: 1.72, z: 0 };
+  const ARC = { x: 0.0, y: 1.30, z: -2.25, rx: 4.80, ry: 3.00 };
+
+  function glowTexture(inner, outer) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(64, 64, 2, 64, 64, 62);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.22, inner);
+    grd.addColorStop(0.55, outer);
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function solarTexture() {
+    const c = document.createElement('canvas');
+    c.width = 640; c.height = 400;
+    const g = c.getContext('2d');
+
+    const base = g.createLinearGradient(0, 0, 640, 400);
+    base.addColorStop(0, '#0a1a3c');
+    base.addColorStop(0.5, '#173f86');
+    base.addColorStop(1, '#0b2249');
+    g.fillStyle = base;
+    g.fillRect(0, 0, 640, 400);
+
+    const cols = 6, rows = 4, cw = 640 / cols, ch = 400 / rows;
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) {
+        const x = i * cw + 5, y = j * ch + 5, w = cw - 10, h = ch - 10;
+        g.fillStyle = '#0f2d66';
+        g.fillRect(x, y, w, h);
+        g.strokeStyle = 'rgba(186,230,253,.5)';
+        g.lineWidth = 1.6;
+        g.beginPath();
+        g.moveTo(x + w * .3, y); g.lineTo(x + w * .3, y + h);
+        g.moveTo(x + w * .7, y); g.lineTo(x + w * .7, y + h);
+        g.stroke();
+        g.strokeStyle = 'rgba(255,255,255,.13)';
+        g.lineWidth = 1;
+        for (let fy = y + 9; fy < y + h; fy += 9) {
+          g.beginPath(); g.moveTo(x, fy); g.lineTo(x + w, fy); g.stroke();
+        }
+      }
+    }
+    // reflejo especular
+    const shine = g.createLinearGradient(0, 0, 640, 400);
+    shine.addColorStop(0, 'rgba(255,255,255,.16)');
+    shine.addColorStop(0.35, 'rgba(255,255,255,0)');
+    shine.addColorStop(1, 'rgba(56,189,248,.10)');
+    g.fillStyle = shine;
+    g.fillRect(0, 0, 640, 400);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  function initThree() {
+    if (typeof THREE === 'undefined') {
+      fallback2D = true;
+      $('glFail').classList.add('show');
+      $('fallbackWrap').style.display = 'block';
+      return;
+    }
+    try {
+      const wrap = $('canvasWrap');
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x050a12, 0.019);
+
+      camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.setClearColor(0x000000, 0);
+      wrap.appendChild(renderer.domElement);
+
+      /* ---------- Luces ---------- */
+      scene.add(new THREE.HemisphereLight(0x9ec5f0, 0x0a1a14, 0.58));
+
+      sunLight = new THREE.DirectionalLight(0xfff0c7, 1.5);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.set(2048, 2048);
+      sunLight.shadow.camera.near = 1;
+      sunLight.shadow.camera.far = 60;
+      const sc = 9;
+      sunLight.shadow.camera.left = -sc;
+      sunLight.shadow.camera.right = sc;
+      sunLight.shadow.camera.top = sc;
+      sunLight.shadow.camera.bottom = -sc;
+      sunLight.shadow.bias = -0.0009;
+      sunTarget = new THREE.Object3D();
+      sunTarget.position.set(0.2, 0.9, 0);
+      scene.add(sunTarget);
+      sunLight.target = sunTarget;
+      scene.add(sunLight);
+
+      const fill = new THREE.DirectionalLight(0x7fb6ff, 0.35);
+      fill.position.set(-9, 7, 11);
+      scene.add(fill);
+
+      /* ---------- Materiales ---------- */
+      const matSteel = new THREE.MeshStandardMaterial({ color: 0xb8c6d8, metalness: 0.72, roughness: 0.3 });
+      const matDark = new THREE.MeshStandardMaterial({ color: 0x2c384b, metalness: 0.6, roughness: 0.42 });
+      const matRubber = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x3b0a0a, roughness: 0.55 });
+
+      /* ---------- Suelo y terraza ---------- */
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(9.2, 96),
+        new THREE.MeshStandardMaterial({ color: 0x0b1714, roughness: 0.97, metalness: 0 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      const terrace = new THREE.Mesh(
+        new THREE.CircleGeometry(4.1, 96),
+        new THREE.MeshStandardMaterial({ color: 0x121c2a, roughness: 0.88, metalness: 0.06 })
+      );
+      terrace.rotation.x = -Math.PI / 2;
+      terrace.position.y = 0.012;
+      terrace.receiveShadow = true;
+      scene.add(terrace);
+
+      [4.1, 5.9, 7.9].forEach((r) => {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(r - 0.014, r + 0.014, 128),
+          new THREE.MeshBasicMaterial({ color: 0x2b5478, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.026;
+        scene.add(ring);
+      });
+
+      /* ---------- Vegetación baja (ambiente de jardín) ---------- */
+      const shrubMat = new THREE.MeshStandardMaterial({ color: 0x14503a, roughness: 0.92, flatShading: true });
+      const shrubMat2 = new THREE.MeshStandardMaterial({ color: 0x0f3f30, roughness: 0.95, flatShading: true });
+      const shrubSpots = [
+        [-5.9, -1.4, 0.85], [-6.4, 2.5, 0.7], [-4.7, 5.1, 0.95], [1.0, 6.3, 0.8],
+        [4.9, 4.9, 0.9], [6.3, -2.2, 0.75], [5.2, -5.3, 0.85], [-1.9, -6.0, 0.9],
+        [0.9, -6.7, 0.7], [-6.8, -4.3, 0.8], [7.0, 1.6, 0.6], [-3.4, 6.6, 0.7]
+      ];
+      shrubSpots.forEach((p, i) => {
+        const g = new THREE.Group();
+        g.position.set(p[0], 0, p[1]);
+        const n = 2 + (i % 2);
+        for (let k = 0; k < n; k++) {
+          const s = p[2] * (0.7 + 0.28 * k);
+          const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), k % 2 ? shrubMat : shrubMat2);
+          bush.position.set((k - n / 2) * s * 0.75, s * 0.62, (k % 2 - 0.5) * s * 0.5);
+          bush.rotation.set(k, k * 1.7, k * 0.6);
+          bush.castShadow = true;
+          bush.receiveShadow = true;
+          g.add(bush);
+        }
+        scene.add(g);
+      });
+
+      // piedras decorativas
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.95, flatShading: true });
+      [[-3.2, 3.0, .3], [2.4, 3.4, .26], [4.2, 1.4, .34], [-4.6, -3.2, .28], [3.6, -3.9, .3], [-1.6, -3.1, .24]]
+        .forEach((p, i) => {
+          const st = new THREE.Mesh(new THREE.IcosahedronGeometry(p[2], 0), stoneMat);
+          st.position.set(p[0], p[2] * 0.55, p[1]);
+          st.rotation.set(i, i * 2.1, i * 0.7);
+          st.castShadow = true;
+          st.receiveShadow = true;
+          scene.add(st);
+        });
+
+      /* ---------- Pedestal + eje + servo ---------- */
+      const ped = new THREE.Group();
+
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.16, 1.55), matDark);
+      plate.position.set(PIVOT.x, 0.08, 0);
+      plate.castShadow = true; plate.receiveShadow = true;
+      ped.add(plate);
+
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 1.1), matSteel);
+      plinth.position.set(PIVOT.x, 0.19, 0);
+      plinth.castShadow = true;
+      ped.add(plinth);
+
+      [-1.16, 1.16].forEach((z) => {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.24, 1.66, 0.16), matDark);
+        pillar.position.set(PIVOT.x, 0.24 + 0.83, z);
+        pillar.castShadow = true;
+        ped.add(pillar);
+
+        const bearing = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.115, 0.14, 24), matSteel);
+        bearing.rotation.x = Math.PI / 2;
+        bearing.position.set(PIVOT.x, PIVOT.y, z);
+        bearing.castShadow = true;
+        ped.add(bearing);
+      });
+
+      // cuerpo del servo SG90
+      const servoBody = new THREE.Mesh(
+        new THREE.BoxGeometry(0.44, 0.38, 0.3),
+        new THREE.MeshPhysicalMaterial({ color: 0x1d7fbf, roughness: 0.35, metalness: 0.1, transparent: true, opacity: 0.95 })
+      );
+      servoBody.position.set(PIVOT.x, 0.43, 1.34);
+      servoBody.castShadow = true;
+      ped.add(servoBody);
+
+      const servoCap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 20), matSteel);
+      servoCap.rotation.x = Math.PI / 2;
+      servoCap.position.set(PIVOT.x, 0.63, 1.34);
+      ped.add(servoCap);
+
+      servoLed = new THREE.Mesh(
+        new THREE.SphereGeometry(0.035, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0x34d399 })
+      );
+      servoLed.position.set(PIVOT.x + 0.16, 0.5, 1.5);
+      ped.add(servoLed);
+
+      scene.add(ped);
+
+      /* ---------- Panel solar ---------- */
+      panelPivot = new THREE.Group();
+      panelPivot.position.set(PIVOT.x, PIVOT.y, PIVOT.z);
+      scene.add(panelPivot);
+
+      // eje de giro (fijo, bajo la cara del panel)
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 2.42, 20), matSteel);
+      shaft.rotation.x = Math.PI / 2;
+      shaft.position.set(PIVOT.x, PIVOT.y, 0);
+      shaft.castShadow = true;
+      scene.add(shaft);
+
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(3.42, 0.1, 2.24), matSteel);
+      frame.castShadow = true;
+      frame.receiveShadow = true;
+      panelPivot.add(frame);
+
+      const cells = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.24, 2.04),
+        new THREE.MeshStandardMaterial({ map: solarTexture(), metalness: 0.42, roughness: 0.18 })
+      );
+      cells.rotation.x = -Math.PI / 2;
+      cells.position.y = 0.052;
+      panelPivot.add(cells);
+
+      const backPlate = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.05, 1.9), matDark);
+      backPlate.position.y = -0.07;
+      panelPivot.add(backPlate);
+
+      const clampBox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.34), matSteel);
+      clampBox.position.y = -0.11;
+      panelPivot.add(clampBox);
+
+      // Vector normal
+      const normalMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, emissive: 0x8f1030, roughness: 0.35 });
+      const nShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.92, 14), normalMat);
+      nShaft.position.y = 0.53;
+      panelPivot.add(nShaft);
+      const nCone = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.24, 18), normalMat);
+      nCone.position.y = 1.1;
+      panelPivot.add(nCone);
+
+      /* ---------- Arco de límites mecánicos 55°–125° ---------- */
+      const arcMesh = new THREE.Mesh(
+        new THREE.TorusGeometry(1.03, 0.019, 8, 64, rad(S.betaMax - S.betaMin)),
+        new THREE.MeshBasicMaterial({ color: 0x34d399 })
+      );
+      arcMesh.position.set(PIVOT.x, PIVOT.y, 0.02);
+      arcMesh.rotation.z = rad(S.betaMin);
+      scene.add(arcMesh);
+
+      const capGeo = new THREE.SphereGeometry(0.055, 14, 14);
+      stopEast = new THREE.Mesh(capGeo, matRubber.clone());
+      stopEast.position.set(
+        PIVOT.x + 1.03 * Math.cos(rad(S.betaMin)),
+        PIVOT.y + 1.03 * Math.sin(rad(S.betaMin)), 0.02);
+      scene.add(stopEast);
+
+      stopWest = new THREE.Mesh(capGeo, matRubber.clone());
+      stopWest.position.set(
+        PIVOT.x + 1.03 * Math.cos(rad(S.betaMax)),
+        PIVOT.y + 1.03 * Math.sin(rad(S.betaMax)), 0.02);
+      scene.add(stopWest);
+
+      /* ---------- Arduino ---------- */
+      const ard = new THREE.Group();
+      ard.position.set(0.62, 0, 1.42);
+
+      const ardBase = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.17, 0.74), matDark);
+      ardBase.position.y = 0.085;
+      ardBase.castShadow = true; ardBase.receiveShadow = true;
+      ard.add(ardBase);
+
+      const pcb = new THREE.Mesh(
+        new THREE.BoxGeometry(1.14, 0.06, 0.78),
+        new THREE.MeshStandardMaterial({ color: 0x0d7490, roughness: 0.55, metalness: 0.15 })
+      );
+      pcb.position.y = 0.19;
+      pcb.castShadow = true;
+      ard.add(pcb);
+
+      const chip = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.07, 0.17), new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.7 }));
+      chip.position.set(0.06, 0.245, 0.06);
+      ard.add(chip);
+
+      const usb = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.14), matSteel);
+      usb.position.set(-0.63, 0.25, 0);
+      ard.add(usb);
+
+      [-0.24, 0.32].forEach((x, i) => {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.62), new THREE.MeshStandardMaterial({ color: 0x111827 }));
+        strip.position.set(x + (i * 0.04), 0.235, 0);
+        ard.add(strip);
+      });
+
+      const ardLed = new THREE.Mesh(new THREE.SphereGeometry(0.032, 10, 10), new THREE.MeshBasicMaterial({ color: 0x34d399 }));
+      ardLed.position.set(0.47, 0.23, -0.28);
+      ard.add(ardLed);
+
+      scene.add(ard);
+
+      /* ---------- Lámpara de jardín (farol) ---------- */
+      const lamp = new THREE.Group();
+      lamp.position.set(2.95, 0, -0.55);
+
+      const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.16, 32), matDark);
+      lampBase.position.y = 0.08;
+      lampBase.castShadow = true; lampBase.receiveShadow = true;
+      lamp.add(lampBase);
+
+      const lampBase2 = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.12, 28), matSteel);
+      lampBase2.position.y = 0.2;
+      lamp.add(lampBase2);
+
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 1.95, 20), matDark);
+      post.position.y = 1.18;
+      post.castShadow = true;
+      lamp.add(post);
+
+      [0.34, 0.9, 1.55].forEach((y) => {
+        const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.045, 20), matSteel);
+        collar.position.y = y;
+        lamp.add(collar);
+      });
+
+      const lanternPlate = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.06, 0.56), matDark);
+      lanternPlate.position.y = 2.18;
+      lanternPlate.castShadow = true;
+      lamp.add(lanternPlate);
+
+      lampGlassMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffe0b0, emissive: 0xffa42b, emissiveIntensity: 0.1,
+        transparent: true, opacity: 0.42, roughness: 0.08, metalness: 0.0,
+        side: THREE.DoubleSide
+      });
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.42), lampGlassMat);
+      glass.position.y = 2.47;
+      lamp.add(glass);
+
+      // 4 montantes verticales del farol
+      [-1, 1].forEach((sx) => [-1, 1].forEach((sz) => {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.56, 0.045), matDark);
+        bar.position.set(sx * 0.22, 2.47, sz * 0.22);
+        bar.castShadow = true;
+        lamp.add(bar);
+      }));
+
+      // filamento interior
+      const filament = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.055, 0.2, 12),
+        new THREE.MeshBasicMaterial({ color: 0xfff3c4 })
+      );
+      filament.position.y = 2.44;
+      lamp.add(filament);
+
+      // techo piramidal
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(0.44, 0.3, 4), matDark);
+      roof.position.y = 2.9;
+      roof.rotation.y = Math.PI / 4;
+      roof.castShadow = true;
+      lamp.add(roof);
+
+      const finial = new THREE.Mesh(new THREE.SphereGeometry(0.05, 14, 14), matSteel);
+      finial.position.y = 3.08;
+      lamp.add(finial);
+
+      // halo cálido
+      lampGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexture('rgba(255,196,90,.95)', 'rgba(255,150,40,.35)'),
+        blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0
+      }));
+      lampGlow.scale.set(2.4, 2.4, 1);
+      lampGlow.position.y = 2.47;
+      lamp.add(lampGlow);
+
+      lampLight = new THREE.PointLight(0xffb04a, 0, 7.5, 2);
+      lampLight.position.set(2.95, 2.5, -0.55);
+      scene.add(lampLight);
+
+      // charco de luz en el suelo
+      lampPool = new THREE.Mesh(
+        new THREE.CircleGeometry(1.9, 48),
+        new THREE.MeshBasicMaterial({
+          map: glowTexture('rgba(255,186,80,.85)', 'rgba(255,150,40,.18)'),
+          transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false
+        })
+      );
+      lampPool.rotation.x = -Math.PI / 2;
+      lampPool.position.set(2.95, 0.03, -0.55);
+      scene.add(lampPool);
+
+      scene.add(lamp);
+
+      /* ---------- Cableado y pulsos de corriente ---------- */
+      const wireCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(PIVOT.x + 0.4, 0.06, 0.62),
+        new THREE.Vector3(-1.3, 0.05, 1.2),
+        new THREE.Vector3(0.62, 0.05, 1.86),
+        new THREE.Vector3(1.85, 0.05, 1.15),
+        new THREE.Vector3(2.75, 0.05, 0.1),
+        new THREE.Vector3(2.95, 0.06, -0.42)
+      ]);
+      const wireMesh = new THREE.Mesh(
+        new THREE.TubeGeometry(wireCurve, 90, 0.018, 6, false),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 })
+      );
+      scene.add(wireMesh);
+
+      const pulseGeo = new THREE.SphereGeometry(0.038, 8, 8);
+      for (let i = 0; i < 12; i++) {
+        const pm = new THREE.Mesh(pulseGeo, new THREE.MeshBasicMaterial({ color: 0x34d399 }));
+        scene.add(pm);
+        wires.push({ mesh: pm, t: i / 12 });
+      }
+
+      /* ---------- Sol, arco y haz ---------- */
+      sunMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.42, 32, 32),
+        new THREE.MeshBasicMaterial({ color: 0xfff3b0 })
+      );
+      scene.add(sunMesh);
+
+      sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexture('rgba(255,226,120,.95)', 'rgba(245,158,11,.4)'),
+        blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+      }));
+      sunGlow.scale.set(3.4, 3.4, 1);
+      sunMesh.add(sunGlow);
+
+      // trayectoria aparente del sol
+      const pathPts = [];
+      for (let d = 0; d <= 180; d += 2) {
+        const r = rad(d);
+        pathPts.push(new THREE.Vector3(ARC.x + ARC.rx * Math.cos(r), ARC.y + ARC.ry * Math.sin(r), ARC.z));
+      }
+      sunPathLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(pathPts),
+        new THREE.LineDashedMaterial({ color: 0x4b6b8a, dashSize: 0.26, gapSize: 0.22, transparent: true, opacity: 0.75 })
+      );
+      sunPathLine.computeLineDistances();
+      scene.add(sunPathLine);
+
+      rayLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+        new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.9 })
+      );
+      scene.add(rayLine);
+
+      const photonGeo = new THREE.SphereGeometry(0.065, 10, 10);
+      const photonMat = new THREE.MeshBasicMaterial({ color: 0xfef3c7 });
+      for (let i = 0; i < 7; i++) {
+        const pm = new THREE.Mesh(photonGeo, photonMat);
+        scene.add(pm);
+        photons.push({ mesh: pm, t: i / 7 });
+      }
+
+      webglReady = true;
+      resizeThree();
+    } catch (err) {
+      console.error(err);
+      webglReady = false;
+      fallback2D = true;
+      $('glFail').classList.add('show');
+      $('fallbackWrap').style.display = 'block';
+    }
+  }
+
+  function resizeThree() {
+    const wrap = $('canvasWrap');
+    if (!wrap || !renderer || !camera) return;
+    const w = wrap.clientWidth || 1;
+    const h = wrap.clientHeight || 1;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    if (fallback2D) resizeFallback();
+  }
+
+  function sunPosition(theta) {
+    const r = rad(theta);
+    return new THREE.Vector3(ARC.x + ARC.rx * Math.cos(r), ARC.y + ARC.ry * Math.sin(r), ARC.z);
+  }
+
+  function updateScene() {
+    if (!webglReady) return;
+    const m = S.model || computeModel();
+
+    /* cámara */
+    const c = S.cam;
+    c.yaw = lerp(c.yaw, c.tYaw, 0.13);
+    c.pitch = lerp(c.pitch, c.tPitch, 0.13);
+    c.dist = lerp(c.dist, c.tDist, 0.13);
+
+    const target = new THREE.Vector3(0.15, 1.75, 0);
+    camera.position.set(
+      target.x + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw),
+      target.y + c.dist * Math.sin(c.pitch),
+      target.z + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)
+    );
+    camera.lookAt(target);
+
+    /* panel: β = 90° plano · 55° inclinado al este · 125° al oeste */
+    panelPivot.rotation.z = rad(S.visualBeta - 90);
+
+    /* topes de goma */
+    const atEast = S.visualBeta <= S.betaMin + 0.6;
+    const atWest = S.visualBeta >= S.betaMax - 0.6;
+    if (stopEast) stopEast.material.emissive.setHex(atEast ? 0xef4444 : 0x2a0707);
+    if (stopWest) stopWest.material.emissive.setHex(atWest ? 0xef4444 : 0x2a0707);
+
+    /* sol */
+    const sp = sunPosition(m.theta);
+    sunMesh.position.copy(sp);
+    const glowScale = 2.6 + S.weather * 1.7;
+    sunGlow.scale.set(glowScale, glowScale, 1);
+    sunGlow.material.opacity = 0.45 + S.weather * 0.5;
+
+    sunLight.position.set(sp.x * 1.55, sp.y * 1.35 + 2.4, sp.z * 1.55 + 1.2);
+    sunLight.intensity = 0.42 + S.weather * 1.25;
+
+    /* haz solar */
+    const face = new THREE.Vector3(
+      PIVOT.x + 0.35 * Math.cos(rad(S.visualBeta)),
+      PIVOT.y + 0.35 * Math.sin(rad(S.visualBeta)),
+      0
+    );
+    const pos = rayLine.geometry.attributes.position;
+    pos.setXYZ(0, sp.x, sp.y, sp.z);
+    pos.setXYZ(1, face.x, face.y, face.z);
+    pos.needsUpdate = true;
+    rayLine.material.opacity = 0.25 + S.weather * 0.65;
+
+    photons.forEach((p) => {
+      p.t = (p.t + 0.011 + S.weather * 0.012) % 1;
+      p.mesh.position.lerpVectors(sp, face, p.t);
+      p.mesh.visible = S.weather > 0.14;
+    });
+
+    /* lámpara */
+    const targetGlow = S.lampOn ? 1 : 0;
+    lampGlow.material.opacity = lerp(lampGlow.material.opacity, targetGlow * 0.9, 0.12);
+    lampGlassMat.emissiveIntensity = lerp(lampGlassMat.emissiveIntensity, S.lampOn ? 1.15 : 0.06, 0.12);
+    lampGlassMat.opacity = lerp(lampGlassMat.opacity, S.lampOn ? 0.62 : 0.32, 0.12);
+    lampLight.intensity = lerp(lampLight.intensity, S.lampOn ? 1.9 : 0, 0.12);
+    lampPool.material.opacity = lerp(lampPool.material.opacity, S.lampOn ? 0.42 : 0, 0.12);
+
+    /* pulsos de corriente */
+    const flow = clamp(m.P / Math.max(S.panelW, 0.1), 0.05, 1);
+    wires.forEach((w) => {
+      w.t = (w.t + 0.0016 + flow * 0.0045) % 1;
+      w.mesh.position.copy(wireCurvePoint(w.t));
+      w.mesh.visible = m.P > 0.05;
+    });
+
+    /* LED de estado del Arduino */
+    if (servoLed) {
+      const color = m.viable ? 0x38bdf8 : m.P < 0.1 ? 0xf43f5e : 0x34d399;
+      servoLed.material.color.setHex(color);
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  // curva global del cableado (para animar pulsos)
+  let _wireCurve = null;
+  function wireCurvePoint(t) {
+    if (!_wireCurve) {
+      _wireCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(PIVOT.x + 0.4, 0.06, 0.62),
+        new THREE.Vector3(-1.3, 0.05, 1.2),
+        new THREE.Vector3(0.62, 0.05, 1.86),
+        new THREE.Vector3(1.85, 0.05, 1.15),
+        new THREE.Vector3(2.75, 0.05, 0.1),
+        new THREE.Vector3(2.95, 0.06, -0.42)
+      ]);
+    }
+    return _wireCurve.getPointAt(t);
+  }
+
+  /* ============================================================
+     8 · Respaldo 2D (si Three.js no está disponible)
+     ============================================================ */
+  let fbCtx = null, fbCanvas = null;
+
+  function resizeFallback() {
+    fbCanvas = $('fallbackCanvas');
+    if (!fbCanvas) return;
+    const wrap = $('fallbackWrap');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    fbCanvas.width = Math.max(320, wrap.clientWidth) * dpr;
+    fbCanvas.height = Math.max(240, wrap.clientHeight) * dpr;
+    fbCtx = fbCanvas.getContext('2d');
+  }
+
+  function drawFallback() {
+    if (!fallback2D || !fbCtx) return;
+    const m = S.model || computeModel();
+    const W = fbCanvas.width, H = fbCanvas.height;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const g = fbCtx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, W, H);
+
+    const scale = Math.min(W / 1200, H / 620) * 1.55;
+    const cx = W * 0.5, cy = H * 0.66;
+    const P = { x: cx - scale * 0.55, y: cy };
+    const toX = (x) => cx + x * scale;
+    const toY = (y) => cy - y * scale;
+
+    // suelo
+    g.fillStyle = '#08120f';
+    g.fillRect(0, toY(0), W, H - toY(0));
+    g.strokeStyle = 'rgba(56,189,248,.45)';
+    g.lineWidth = 1.5 * dpr;
+    g.beginPath(); g.moveTo(0, toY(0)); g.lineTo(W, toY(0)); g.stroke();
+
+    // arco del sol
+    g.strokeStyle = 'rgba(75,107,138,.7)';
+    g.setLineDash([6 * dpr, 5 * dpr]);
+    g.beginPath();
+    for (let d = 0; d <= 180; d += 2) {
+      const r = rad(d);
+      const x = toX(0.9 + 5.4 * Math.cos(r)), y = toY(1.6 + 4.0 * Math.sin(r));
+      d === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke();
+    g.setLineDash([]);
+
+    // sol
+    const th = rad(m.theta);
+    const sx = toX(0.9 + 5.4 * Math.cos(th));
+    const sy = toY(1.6 + 4.0 * Math.sin(th));
+    const grd = g.createRadialGradient(sx, sy, 2, sx, sy, 46 * dpr);
+    grd.addColorStop(0, '#fffbe8');
+    grd.addColorStop(0.3, 'rgba(253,224,71,.9)');
+    grd.addColorStop(1, 'rgba(245,158,11,0)');
+    g.fillStyle = grd;
+    g.beginPath(); g.arc(sx, sy, 46 * dpr, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fde68a';
+    g.beginPath(); g.arc(sx, sy, 9 * dpr, 0, Math.PI * 2); g.fill();
+
+    // panel
+    const b = rad(S.visualBeta);
+    const pcx = -1.0, pcy = 1.72;            // centro del panel (mundo)
+    const ux = Math.cos(b), uy = Math.sin(b); // normal
+    const vx = -uy, vy = ux;                  // plano del panel
+    const half = 1.65;
+    const ax = toX(pcx + vx * half), ay = toY(pcy + vy * half);
+    const bx = toX(pcx - vx * half), by = toY(pcy - vy * half);
+
+    g.strokeStyle = '#cbd5e1';
+    g.lineWidth = Math.max(3, 0.1 * scale);
+    g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+
+    g.strokeStyle = '#1d4ed8';
+    g.lineWidth = Math.max(2, 0.075 * scale);
+    g.beginPath();
+    g.moveTo(ax + vx * 0.05 * scale, ay - vy * 0.05 * scale);
+    g.lineTo(bx - vx * 0.05 * scale, by + vy * 0.05 * scale);
+    g.stroke();
+
+    // vector normal
+    const nX = toX(pcx + ux * 1.05), nY = toY(pcy + uy * 1.05);
+    g.strokeStyle = '#f43f5e';
+    g.lineWidth = 2 * dpr;
+    g.beginPath();
+    g.moveTo(toX(pcx), toY(pcy));
+    g.lineTo(nX, nY);
+    g.stroke();
+    g.fillStyle = '#f43f5e';
+    g.beginPath();
+    g.moveTo(nX + ux * 0.13 * scale - uy * 0.07 * scale, nY - uy * 0.13 * scale - ux * 0.07 * scale);
+    g.lineTo(nX, nY);
+    g.lineTo(nX + ux * 0.13 * scale + uy * 0.07 * scale, nY - uy * 0.13 * scale + ux * 0.07 * scale);
+    g.closePath(); g.fill();
+
+    // pedestal
+    const px = toX(pcx), py = toY(pcy);
+    g.fillStyle = '#2c384b';
+    g.fillRect(px - 0.16 * scale, py, 0.32 * scale, toY(0) - py);
+    g.fillStyle = '#b8c6d8';
+    g.fillRect(px - 0.5 * scale, py - 4 * dpr, 1.0 * scale, 4 * dpr);
+
+    // lámpara
+    const lx = toX(2.2), ly = toY(0);
+    g.fillStyle = '#2c384b';
+    g.fillRect(lx - 0.05 * scale, toY(2.18), 0.1 * scale, ly - toY(2.18));
+    if (S.lampOn) {
+      const lg = g.createRadialGradient(lx, toY(2.45), 2, lx, toY(2.45), 70 * dpr);
+      lg.addColorStop(0, 'rgba(255,220,140,.8)');
+      lg.addColorStop(1, 'rgba(255,150,40,0)');
+      g.fillStyle = lg;
+      g.beginPath(); g.arc(lx, toY(2.45), 70 * dpr, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = S.lampOn ? '#fde68a' : '#334155';
+    g.fillRect(lx - 0.21 * scale, toY(2.72), 0.42 * scale, 0.5 * scale);
+    g.fillStyle = '#2c384b';
+    g.beginPath();
+    g.moveTo(lx - 0.3 * scale, toY(2.72));
+    g.lineTo(lx + 0.3 * scale, toY(2.72));
+    g.lineTo(lx, toY(3.02));
+    g.closePath(); g.fill();
+
+    // haz
+    g.strokeStyle = 'rgba(251,191,36,.7)';
+    g.lineWidth = 1.6 * dpr;
+    g.setLineDash([7 * dpr, 5 * dpr]);
+    g.beginPath();
+    g.moveTo(sx, sy);
+    g.lineTo(px + Math.cos(-b) * 0.1 * scale, py + Math.sin(-b) * 0.1 * scale);
+    g.stroke();
+    g.setLineDash([]);
+
+    // etiquetas
+    g.fillStyle = 'rgba(226,236,248,.92)';
+    g.font = `600 ${11 * dpr}px Inter, system-ui, sans-serif`;
+    g.fillText('PANEL', px - 0.6 * scale, py + 22 * dpr);
+    g.fillText('LÁMPARA', lx - 0.55 * scale, ly - 6 * dpr);
+    g.fillText('EJE', px - 0.2 * scale, toY(0) - 6 * dpr);
+  }
+
+  /* ============================================================
+     9 · Bucle de animación
+     ============================================================ */
+  function animate() {
+    requestAnimationFrame(animate);
+    S.visualBeta = lerp(S.visualBeta, S.beta, 0.16);
+    if (Math.abs(S.beta - S.visualBeta) < 0.015) S.visualBeta = S.beta;
+
+    if (webglReady) {
+      updateScene();
+    } else if (fallback2D) {
+      drawFallback();
+    }
+  }
+
+  /* ============================================================
+     10 · Eventos
+     ============================================================ */
+  function bindEvents() {
+    // hora
+    bindTrack($('timeTrack'), 6, 18, (v) => {
+      S.hour = clamp(v, 6, 18);
+      refresh();
+    });
+
+    // inclinación
+    bindTrack($('betaTrack'), S.betaMin, S.betaMax, (v) => {
+      S.beta = clamp(Math.round(v * 2) / 2, S.betaMin, S.betaMax);
+      refresh();
+    });
+
+    // play
+    $('btnPlay').addEventListener('click', togglePlay);
+
+    // alinear
+    $('btnAlign').addEventListener('click', () => {
+      const m = computeModel();
+      S.beta = clamp(m.theta, S.betaMin, S.betaMax);
+      S.movingUntil = performance.now() + 700;
+      refresh();
+    });
+
+    // reiniciar
+    $('btnReset').addEventListener('click', () => {
+      if (S.playing) { clearInterval(S.timer); S.timer = null; setPlaying(false); }
+      S.hour = 10.3;
+      S.beta = 90;
+      S.visualBeta = 90;
+      S.weather = 0.95;
+      S.lampOn = true;
+      S.lampW = 0.6;
+      S.panelW = 3.5;
+      $('selectPanelWatts').value = '3.5';
+      $('selectLampWatts').value = '0.6';
+      syncWeatherButtons();
+      refresh();
+    });
+
+    // lámpara on/off
+    $('btnLamp').addEventListener('click', () => {
+      S.lampOn = !S.lampOn;
+      refresh();
+    });
+
+    // potencias
+    $('selectPanelWatts').addEventListener('change', (e) => {
+      S.panelW = parseFloat(e.target.value);
+      refresh();
+    });
+    $('selectLampWatts').addEventListener('change', (e) => {
+      S.lampW = parseFloat(e.target.value);
+      refresh();
+    });
+
+    // condición ambiental
+    document.querySelectorAll('.wbtn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        S.weather = parseFloat(btn.getAttribute('data-w'));
+        syncWeatherButtons();
+        refresh();
+      });
+    });
+
+    // cámara
+    document.querySelectorAll('.cbtn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-cam');
+        S.cam.mode = mode;
+        if (mode === 'iso')   { S.cam.tYaw = 0.46; S.cam.tPitch = 0.30; S.cam.tDist = 15.0; }
+        if (mode === 'top')   { S.cam.tYaw = 0.00; S.cam.tPitch = 1.45; S.cam.tDist = 15.5; }
+        if (mode === 'front') { S.cam.tYaw = 0.00; S.cam.tPitch = 0.07; S.cam.tDist = 16.0; }
+        syncCamButtons();
+      });
+    });
+
+    // órbita
+    const wrap = $('canvasWrap');
+    let dragging = false, lx = 0, ly = 0;
+    wrap.addEventListener('pointerdown', (e) => {
+      dragging = true; lx = e.clientX; ly = e.clientY;
+      wrap.setPointerCapture(e.pointerId);
+      wrap.classList.add('grabbing');
+    });
+    wrap.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lx, dy = e.clientY - ly;
+      lx = e.clientX; ly = e.clientY;
+      S.cam.tYaw += dx * 0.006;
+      S.cam.tPitch = clamp(S.cam.tPitch + dy * 0.005, 0.06, 1.50);
+      S.cam.mode = 'free';
+      syncCamButtons();
+    });
+    const endDrag = () => { dragging = false; wrap.classList.remove('grabbing'); };
+    wrap.addEventListener('pointerup', endDrag);
+    wrap.addEventListener('pointercancel', endDrag);
+    wrap.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      S.cam.tDist = clamp(S.cam.tDist + e.deltaY * 0.012, 9.5, 24);
+    }, { passive: false });
+
+    // ayuda
+    $('btnHelp').addEventListener('click', () => $('helpModal').classList.add('show'));
+    $('btnCloseHelp').addEventListener('click', () => $('helpModal').classList.remove('show'));
+    $('helpModal').addEventListener('click', (e) => {
+      if (e.target === $('helpModal')) $('helpModal').classList.remove('show');
+    });
+
+    // pantalla completa
+    $('btnFull').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    // teclado
+    window.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.code === 'ArrowLeft') {
+        S.hour = clamp(S.hour - 0.25, 6, 18);
+        refresh();
+      } else if (e.code === 'ArrowRight') {
+        S.hour = clamp(S.hour + 0.25, 6, 18);
+        refresh();
+      } else if (e.code === 'ArrowUp') {
+        S.beta = clamp(S.beta + 1, S.betaMin, S.betaMax);
+        refresh();
+      } else if (e.code === 'ArrowDown') {
+        S.beta = clamp(S.beta - 1, S.betaMin, S.betaMax);
+        refresh();
+      }
+    });
+
+    // redimensionado
+    window.addEventListener('resize', () => {
+      resizeThree();
+      if (fallback2D) resizeFallback();
+    });
+  }
+
+  function syncWeatherButtons() {
+    document.querySelectorAll('.wbtn').forEach((b) => {
+      const w = parseFloat(b.getAttribute('data-w'));
+      b.classList.toggle('is-on', Math.abs(w - S.weather) < 0.01);
+    });
+  }
+
+  function syncCamButtons() {
+    document.querySelectorAll('.cbtn').forEach((b) => {
+      b.classList.toggle('is-on', b.getAttribute('data-cam') === S.cam.mode);
+    });
+  }
+
+  /* ============================================================
+     11 · Arranque
+     ============================================================ */
+  function boot() {
+    // Parámetros opcionales (?h=12&b=90&yaw=0.46&pitch=0.30&dist=15) para depuración y capturas
+    try {
+      const qp = new URLSearchParams(location.search);
+      if (qp.has('h'))     S.hour = clamp(parseFloat(qp.get('h')), 6, 18);
+      if (qp.has('b'))     S.beta = clamp(parseFloat(qp.get('b')), S.betaMin, S.betaMax);
+      if (qp.has('yaw'))   S.cam.yaw = S.cam.tYaw = parseFloat(qp.get('yaw'));
+      if (qp.has('pitch')) S.cam.pitch = S.cam.tPitch = parseFloat(qp.get('pitch'));
+      if (qp.has('dist'))  S.cam.dist = S.cam.tDist = parseFloat(qp.get('dist'));
+      if (qp.has('w'))     S.weather = clamp(parseFloat(qp.get('w')), 0.05, 1);
+    } catch (e) { /* sin parámetros */ }
+    S.visualBeta = S.beta;
+
+    buildTicks();
+    bindEvents();
+    initThree();
+    if (fallback2D) resizeFallback();
+    syncWeatherButtons();
+    refresh();
+    animate();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>
